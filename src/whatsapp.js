@@ -15,6 +15,7 @@ const lidCache = new Map()
 let sock
 let queue = Promise.resolve()
 let total = 0
+let retries = 0
 
 const isGroup = jid => !!jid?.endsWith('@g.us')
 const isIgnored = jid => !jid || jid.endsWith('@broadcast') || jid.endsWith('@newsletter')
@@ -140,6 +141,7 @@ async function onConnection({ connection, lastDisconnect, qr }) {
     qrcode.generate(qr, { small: true })
   }
   if (connection === 'open') {
+    retries = 0
     console.log(`Conectado a WhatsApp como ${sock.user?.name || sock.user?.id}. Recibiendo mensajes...`)
     try {
       await storeGroups(Object.values(await sock.groupFetchAllParticipating()))
@@ -156,8 +158,10 @@ async function onConnection({ connection, lastDisconnect, qr }) {
       setTimeout(() => startWhatsApp().catch(err => logger.error({ err }, 'fallo al reiniciar')), 2000)
       return
     }
-    console.log(`Conexion cerrada (codigo ${code ?? '?'}). Reconectando en 3 s...`)
-    setTimeout(() => startWhatsApp().catch(err => logger.error({ err }, 'fallo al reconectar')), 3000)
+    // Espera cada vez mas (3 s, 6 s, 12 s... hasta 2 min) para no insistir contra WhatsApp
+    const wait = Math.min(120_000, 3000 * 2 ** retries++)
+    console.log(`Conexion cerrada (codigo ${code ?? '?'}). Reconectando en ${Math.round(wait / 1000)} s...`)
+    setTimeout(() => startWhatsApp().catch(err => logger.error({ err }, 'fallo al reconectar')), wait)
   }
 }
 
@@ -195,15 +199,24 @@ export async function startWhatsApp() {
   const options = {
     auth: state,
     logger,
-    browser: Browsers.macOS('Desktop'), // necesario para recibir el historico completo
+    // Como navegador Chrome: desde 2026 WhatsApp corta con 428 a los clientes que dicen ser
+    // "Desktop" antes de mandar el QR (Baileys issue #2677).
+    browser: Browsers.ubuntu('Chrome'),
     syncFullHistory: true,
     markOnlineOnConnect: false,         // no apareces "en linea" y el movil sigue notificando
     getMessage: async () => undefined,
   }
-  try {
-    const latest = await baileys.fetchLatestBaileysVersion?.()
-    if (latest?.version) options.version = latest.version
-  } catch { /* usa la version por defecto de la libreria */ }
+  // Version actual de WhatsApp Web (fetchLatestBaileysVersion puede devolver una antigua: issue #2691)
+  for (const fetchVersion of [baileys.fetchLatestWaWebVersion, baileys.fetchLatestBaileysVersion]) {
+    try {
+      const latest = await fetchVersion?.()
+      if (latest?.version) {
+        options.version = latest.version
+        break
+      }
+    } catch { /* probamos la siguiente fuente; si no, la version por defecto de la libreria */ }
+  }
+  if (retries === 0) console.log(`Conectando a WhatsApp (version web ${options.version?.join('.') ?? 'por defecto'})...`)
 
   sock = makeWASocket(options)
   // Procesa los eventos de uno en uno para no pisar escrituras en la base de datos.
