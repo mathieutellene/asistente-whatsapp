@@ -40,6 +40,22 @@ CREATE TABLE IF NOT EXISTS lid_map (
   pn  text NOT NULL
 );
 
+-- Borradores de respuesta generados por la IA local. Nunca se envían solos.
+CREATE TABLE IF NOT EXISTS drafts (
+  id             serial PRIMARY KEY,
+  chat_id        text NOT NULL,
+  trigger_msg_id text,                        -- mensaje al que responde
+  created_at     timestamptz NOT NULL DEFAULT now(),
+  updated_at     timestamptz NOT NULL DEFAULT now(),
+  status         text NOT NULL DEFAULT 'pendiente', -- pendiente | usado | descartado | respondido | reemplazado
+  text           text NOT NULL,
+  model          text,
+  gen_ms         int,                         -- lo que tardó la IA
+  my_reply       text                         -- lo que acabaste enviando tú (para aprender)
+);
+CREATE INDEX IF NOT EXISTS drafts_chat_idx   ON drafts (chat_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS drafts_status_idx ON drafts (status, created_at DESC);
+
 -- Chats cuyo último mensaje NO es tuyo (sin archivar ni silenciar).
 CREATE OR REPLACE VIEW pendientes AS
 WITH ultimo AS (

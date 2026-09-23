@@ -1,0 +1,435 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Asistente">
+<meta name="theme-color" content="#0f1115">
+<link rel="manifest" href="/manifest.webmanifest">
+<title>Asistente WhatsApp</title>
+<style>
+:root {
+  --bg: #f4f5f7; --card: #ffffff; --text: #16181d; --muted: #6b7280; --line: #e5e7eb;
+  --accent: #1f8f5f; --accent-soft: #e3f4ec; --warn: #b45309; --warn-soft: #fdf1e1;
+  --bad: #b91c1c; --bad-soft: #fde8e8; --bubble-me: #dcf5e6; --bubble: #f0f1f3;
+  --shadow: 0 1px 2px rgba(0,0,0,.05), 0 1px 8px rgba(0,0,0,.04);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #0f1115; --card: #181b21; --text: #e8eaed; --muted: #9aa1ab; --line: #2a2e36;
+    --accent: #3cc486; --accent-soft: #173327; --warn: #f0a44b; --warn-soft: #33260f;
+    --bad: #f07070; --bad-soft: #3a1717; --bubble-me: #1d3a2b; --bubble: #23272f;
+    --shadow: none;
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--text); }
+body { font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; -webkit-text-size-adjust: 100%; }
+header { position: sticky; top: 0; z-index: 5; background: var(--bg); padding: calc(env(safe-area-inset-top) + 10px) 16px 8px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--line); }
+header h1 { font-size: 17px; margin: 0; flex: 1; }
+.dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; background: var(--muted); flex: none; }
+.dot.ok { background: var(--accent); } .dot.warn { background: var(--warn); } .dot.bad { background: var(--bad); }
+.pill { font-size: 12px; color: var(--muted); display: inline-flex; align-items: center; gap: 6px; }
+nav { position: fixed; bottom: 0; left: 0; right: 0; z-index: 5; display: flex; background: var(--card); border-top: 1px solid var(--line); padding-bottom: env(safe-area-inset-bottom); }
+nav a { flex: 1; text-align: center; padding: 8px 2px 9px; color: var(--muted); text-decoration: none; font-size: 11px; position: relative; }
+nav a svg { display: block; margin: 0 auto 2px; width: 22px; height: 22px; }
+nav a.on { color: var(--accent); }
+nav .badge { position: absolute; top: 3px; left: 50%; margin-left: 6px; background: var(--bad); color: #fff; border-radius: 9px; font-size: 10px; padding: 0 5px; line-height: 16px; }
+main { padding: 14px 16px calc(84px + env(safe-area-inset-bottom)); max-width: 820px; margin: 0 auto; }
+@media (min-width: 900px) {
+  nav { top: 0; bottom: 0; right: auto; width: 88px; flex-direction: column; border-top: 0; border-right: 1px solid var(--line); padding-top: 64px; }
+  nav a { flex: none; padding: 12px 2px; }
+  header, main { margin-left: 88px; }
+  main { padding-bottom: 32px; }
+}
+h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 22px 0 8px; font-weight: 600; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 14px; box-shadow: var(--shadow); margin-bottom: 12px; }
+.kpis { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
+@media (min-width: 600px) { .kpis { grid-template-columns: repeat(4, 1fr); } }
+.kpi { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 12px 14px; box-shadow: var(--shadow); text-decoration: none; color: inherit; display: block; }
+.kpi b { display: block; font-size: 24px; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.kpi span { font-size: 12px; color: var(--muted); }
+.list { background: var(--card); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; box-shadow: var(--shadow); }
+.row { padding: 11px 14px; border-top: 1px solid var(--line); display: flex; gap: 10px; align-items: flex-start; }
+.row:first-child { border-top: 0; }
+.row .grow { flex: 1; min-width: 0; }
+.row .t { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row .s { color: var(--muted); font-size: 13.5px; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; word-break: break-word; }
+.time { font-size: 12px; color: var(--muted); white-space: nowrap; }
+.tag { font-size: 11px; border-radius: 6px; padding: 1px 6px; background: var(--bubble); color: var(--muted); font-weight: 500; vertical-align: 1px; }
+.tag.g { background: var(--accent-soft); color: var(--accent); }
+.tag.w { background: var(--warn-soft); color: var(--warn); }
+.bubbles { display: flex; flex-direction: column; gap: 5px; margin: 10px 0; }
+.bubble { max-width: 85%; padding: 6px 10px; border-radius: 12px; background: var(--bubble); font-size: 14px; word-break: break-word; white-space: pre-wrap; }
+.bubble.me { align-self: flex-end; background: var(--bubble-me); }
+.bubble small { display: block; font-size: 11px; color: var(--muted); }
+textarea, input[type=text], input[type=search], input[type=password] { width: 100%; font: inherit; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+textarea { min-height: 84px; resize: vertical; }
+textarea:focus, input:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.btn { font: inherit; font-size: 14px; font-weight: 600; border: 1px solid var(--line); background: var(--card); color: var(--text); border-radius: 10px; padding: 9px 13px; cursor: pointer; text-decoration: none; display: inline-flex; align-items: center; gap: 6px; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.danger { color: var(--bad); }
+.btn:disabled { opacity: .5; cursor: default; }
+.btn.small { padding: 6px 10px; font-size: 13px; }
+.seg { display: inline-flex; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 3px; gap: 3px; }
+.seg button { font: inherit; font-size: 13px; border: 0; background: none; color: var(--muted); padding: 6px 12px; border-radius: 8px; cursor: pointer; }
+.seg button.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.empty { text-align: center; color: var(--muted); padding: 28px 16px; }
+.note { font-size: 13px; color: var(--muted); }
+.warnbox { background: var(--warn-soft); color: var(--warn); border-radius: 10px; padding: 10px 12px; font-size: 13.5px; }
+.errbox { background: var(--bad-soft); color: var(--bad); border-radius: 10px; padding: 10px 12px; font-size: 13.5px; }
+.kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; font-size: 14px; }
+.kv dt { color: var(--muted); } .kv dd { margin: 0; word-break: break-word; }
+.tool h3 { margin: 0 0 8px; font-size: 16px; display: flex; align-items: center; gap: 8px; }
+.chips { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; }
+.chip { font: inherit; font-size: 13px; white-space: nowrap; border: 1px solid var(--line); background: var(--card); color: var(--text); border-radius: 20px; padding: 6px 12px; cursor: pointer; }
+.chip.on { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); font-weight: 600; }
+.tablewrap { overflow-x: auto; background: var(--card); border: 1px solid var(--line); border-radius: 14px; margin-top: 10px; -webkit-overflow-scrolling: touch; }
+table { border-collapse: collapse; font-size: 13px; min-width: 100%; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { position: sticky; top: 0; background: var(--card); color: var(--muted); font-weight: 600; white-space: nowrap; }
+td { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pager { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; font-size: 13px; color: var(--muted); }
+.toast { position: fixed; left: 50%; bottom: calc(76px + env(safe-area-inset-bottom)); transform: translateX(-50%); background: var(--text); color: var(--bg); padding: 9px 14px; border-radius: 10px; font-size: 14px; z-index: 20; opacity: 0; transition: opacity .2s; pointer-events: none; max-width: 90vw; }
+.toast.show { opacity: 1; }
+label.radio { display: flex; gap: 10px; align-items: flex-start; padding: 8px 0; cursor: pointer; }
+label.radio input { margin-top: 4px; accent-color: var(--accent); }
+.demo { background: var(--warn-soft); color: var(--warn); text-align: center; font-size: 12px; padding: 4px; }
+</style>
+</head>
+<body>
+<div id="demo"></div>
+<header>
+  <h1>Asistente WhatsApp</h1>
+  <span class="pill" id="wa-pill"><span class="dot"></span>…</span>
+</header>
+<main id="main"><div class="empty">Cargando…</div></main>
+<nav id="nav"></nav>
+<div class="toast" id="toast"></div>
+
+<script>
+'use strict'
+const $ = s => document.querySelector(s)
+const esc = v => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]))
+const DEMO = !/^https?:$/.test(location.protocol) || new URLSearchParams(location.search).has('demo')
+
+const ICONS = {
+  inicio: '<path d="M3 11l9-7 9 7v9a1 1 0 0 1-1 1h-5v-6h-6v6H4a1 1 0 0 1-1-1z"/>',
+  borradores: '<path d="M4 20h4l10-10-4-4L4 16z"/><path d="M13.5 6.5l4 4"/>',
+  pendientes: '<path d="M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z"/>',
+  tablas: '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M9 10v10"/>',
+  ajustes: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M4.2 4.2l2.1 2.1M17.7 17.7l2.1 2.1M2 12h3M19 12h3M4.2 19.8l2.1-2.1M17.7 6.3l2.1-2.1"/>',
+}
+const TABS = [['inicio', 'Inicio'], ['borradores', 'Borradores'], ['pendientes', 'Pendientes'], ['tablas', 'Tablas'], ['ajustes', 'Herramientas']]
+const current = () => { const h = location.hash.slice(1); return TABS.some(t => t[0] === h) ? h : 'inicio' }
+
+let estado = null
+
+async function api(path, body) {
+  if (DEMO) return demoApi(path, body)
+  const res = await fetch(path, body
+    ? { method: 'POST', headers: { 'content-type': 'application/json', 'x-asistente': '1' }, body: JSON.stringify(body) }
+    : { cache: 'no-store' })
+  const j = await res.json().catch(() => ({}))
+  if (!res.ok) throw new Error(j.error || `Error ${res.status}`)
+  return j
+}
+
+function toast(msg) {
+  const t = $('#toast'); t.textContent = msg; t.classList.add('show')
+  clearTimeout(toast.timer); toast.timer = setTimeout(() => t.classList.remove('show'), 2600)
+}
+
+function when(ts) {
+  if (!ts) return '—'
+  const d = new Date(ts), now = new Date()
+  const hm = d.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })
+  if (d.toDateString() === now.toDateString()) return hm
+  const y = new Date(now); y.setDate(now.getDate() - 1)
+  if (d.toDateString() === y.toDateString()) return `ayer ${hm}`
+  return d.toLocaleDateString('es-ES', { day: '2-digit', month: '2-digit' }) + ' ' + hm
+}
+const fmtN = n => Number(n || 0).toLocaleString('es-ES')
+const phoneOf = chatId => (chatId && chatId.endsWith('@s.whatsapp.net') ? chatId.split('@')[0] : null)
+
+function renderNav() {
+  const b = estado?.borradores || 0
+  $('#nav').innerHTML = TABS.map(([id, label]) =>
+    `<a href="#${id}" class="${current() === id ? 'on' : ''}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ICONS[id]}</svg>${label}${id === 'borradores' && b ? `<span class="badge">${b}</span>` : ''}</a>`).join('')
+}
+
+function renderPill() {
+  const wa = estado?.whatsapp || {}
+  const cls = wa.estado === 'conectado' ? 'ok' : wa.estado === 'esperando QR' ? 'warn' : 'bad'
+  const txt = { conectado: 'WhatsApp conectado', 'esperando QR': 'Falta escanear el QR', reconectando: 'Reconectando…', iniciando: 'Iniciando…' }[wa.estado] || 'Sin conexión'
+  $('#wa-pill').innerHTML = `<span class="dot ${cls}"></span>${esc(txt)}`
+}
+
+async function loadEstado() {
+  estado = await api('/api/estado')
+  renderPill(); renderNav()
+}
+
+// ---------- Inicio ----------
+async function viewInicio() {
+  const [msgs] = await Promise.all([api('/api/mensajes?limit=25'), loadEstado()])
+  const e = estado, ia = e.ia
+  const iaTxt = !ia.disponible ? 'Ollama parado' : ia.descargando ? 'Descargando modelo' : !ia.instalado ? 'Sin modelo' : ia.generando ? 'Redactando…' : 'Lista'
+  $('#main').innerHTML = `
+    <div class="kpis">
+      <a class="kpi" href="#tablas"><b>${fmtN(e.memoria.mensajes)}</b><span>mensajes guardados${e.memoria.desde ? ` · desde ${new Date(e.memoria.desde).toLocaleDateString('es-ES')}` : ''}</span></a>
+      <a class="kpi" href="#pendientes"><b>${fmtN(e.pendientes)}</b><span>chats sin responder (7 días)</span></a>
+      <a class="kpi" href="#borradores"><b>${fmtN(e.borradores)}</b><span>borradores esperando</span></a>
+      <a class="kpi" href="#ajustes"><b style="font-size:17px;padding:4px 0 3px">${esc(iaTxt)}</b><span>IA local · ${esc(ia.modelo)}${ia.cola ? ` · ${ia.cola} en cola` : ''}</span></a>
+    </div>
+    ${e.whatsapp.estado === 'esperando QR' ? '<div class="warnbox" style="margin-top:12px">Falta vincular WhatsApp: escanea el QR que aparece en la ventana negra del Huawei.</div>' : ''}
+    <h2>Últimos mensajes recibidos</h2>
+    ${msgs.length ? `<div class="list">${msgs.map(m => `
+      <div class="row">
+        <div class="grow">
+          <div class="t">${esc(m.chat)} ${m.es_grupo ? '<span class="tag g">grupo</span>' : ''}</div>
+          <div class="s">${m.es_grupo && m.de ? `<b>${esc(m.de)}:</b> ` : ''}${esc(m.text)}</div>
+        </div>
+        <span class="time">${when(m.ts)}</span>
+      </div>`).join('')}</div>` : '<div class="card empty">Todavía no hay mensajes guardados.</div>'}`
+}
+
+// ---------- Borradores ----------
+let borradoresModo = 'pendiente'
+async function viewBorradores() {
+  const [list] = await Promise.all([api('/api/borradores' + (borradoresModo === 'historial' ? '?estado=historial' : '')), loadEstado()])
+  const head = `<div class="seg"><button data-modo="pendiente" class="${borradoresModo === 'pendiente' ? 'on' : ''}">Pendientes</button><button data-modo="historial" class="${borradoresModo === 'historial' ? 'on' : ''}">Historial</button></div>
+    <p class="note">El asistente nunca envía nada. «Abrir en WhatsApp» abre el chat con el texto ya escrito: lo revisas y lo envías tú.</p>`
+  if (!list.length) {
+    $('#main').innerHTML = head + `<div class="card empty">${borradoresModo === 'pendiente' ? 'No hay borradores esperando.<br><span class="note">Se preparan solos cuando te escriben (en grupos, solo si te mencionan o te responden). También puedes pedir uno desde <a href="#pendientes">Pendientes</a>.</span>' : 'Aún no hay historial.'}</div>`
+  } else if (borradoresModo === 'historial') {
+    const label = { usado: ['usado', 'g'], descartado: ['descartado', ''], respondido: ['respondiste tú', 'w'], reemplazado: ['reemplazado', ''] }
+    $('#main').innerHTML = head + list.map(d => `
+      <div class="card">
+        <div class="row" style="padding:0"><div class="grow"><div class="t">${esc(d.chat)} <span class="tag ${(label[d.status] || [])[1] || ''}">${esc((label[d.status] || [d.status])[0])}</span></div></div><span class="time">${when(d.created_at)}</span></div>
+        <div class="bubbles"><div class="bubble me"><small>Borrador</small>${esc(d.text)}</div>${d.my_reply ? `<div class="bubble me" style="opacity:.8"><small>Lo que enviaste</small>${esc(d.my_reply)}</div>` : ''}</div>
+      </div>`).join('')
+  } else {
+    $('#main').innerHTML = head + list.map(d => {
+      const phone = phoneOf(d.chat_id)
+      return `
+      <div class="card" data-id="${d.id}" data-chat="${esc(d.chat_id)}">
+        <div class="row" style="padding:0"><div class="grow"><div class="t">${esc(d.chat)} ${d.es_grupo ? '<span class="tag g">grupo</span>' : ''}</div></div><span class="time">${when(d.created_at)}</span></div>
+        <div class="bubbles">${(d.contexto || []).map(m => `<div class="bubble ${m.from_me ? 'me' : ''}">${!m.from_me && d.es_grupo && m.de ? `<small>${esc(m.de)}</small>` : ''}${esc(m.text)}</div>`).join('')}</div>
+        <textarea data-orig="${esc(d.text)}">${esc(d.text)}</textarea>
+        <div class="actions">
+          ${phone ? `<a class="btn primary" data-act="abrir" href="#" data-phone="${phone}">Abrir en WhatsApp</a>` : `<button class="btn primary" data-act="copiar-abrir">Copiar y abrir WhatsApp</button>`}
+          <button class="btn" data-act="copiar">Copiar</button>
+          <button class="btn" data-act="regenerar">Regenerar</button>
+          <button class="btn danger" data-act="descartar">Descartar</button>
+        </div>
+        ${d.gen_ms ? `<p class="note" style="margin:8px 0 0">Redactado por la IA local en ${Math.round(d.gen_ms / 1000)} s</p>` : ''}
+      </div>`
+    }).join('')
+  }
+  $('#main').querySelectorAll('.seg button').forEach(b => b.onclick = () => { borradoresModo = b.dataset.modo; viewBorradores() })
+}
+
+async function saveText(card) {
+  const ta = card.querySelector('textarea')
+  if (ta.value !== ta.dataset.orig) { await api(`/api/borradores/${card.dataset.id}`, { texto: ta.value }); ta.dataset.orig = ta.value }
+}
+
+async function copy(text) {
+  try { await navigator.clipboard.writeText(text); return true }
+  catch { const ta = document.createElement('textarea'); ta.value = text; document.body.append(ta); ta.select(); const ok = document.execCommand('copy'); ta.remove(); return ok }
+}
+
+document.addEventListener('focusout', e => { const card = e.target.closest?.('.card[data-id]'); if (card && e.target.matches('textarea')) saveText(card).catch(() => {}) })
+
+document.addEventListener('click', async e => {
+  const el = e.target.closest('[data-act]'); if (!el) return
+  const card = el.closest('.card[data-id]')
+  const text = card?.querySelector('textarea')?.value || ''
+  try {
+    switch (el.dataset.act) {
+      case 'abrir': {
+        // Se abre en la misma pulsacion (Safari bloquea ventanas abiertas despues de esperar)
+        el.href = `https://wa.me/${el.dataset.phone}?text=${encodeURIComponent(text)}`
+        el.target = '_blank'; el.rel = 'noopener'
+        saveText(card).then(() => api(`/api/borradores/${card.dataset.id}`, { estado: 'usado' })).catch(() => {})
+        setTimeout(() => card.remove(), 400)
+        return
+      }
+      case 'copiar-abrir':
+        e.preventDefault(); await copy(text)
+        await saveText(card); await api(`/api/borradores/${card.dataset.id}`, { estado: 'usado' })
+        toast('Copiado. Pégalo en el grupo.'); location.href = 'whatsapp://'; card.remove(); return
+      case 'copiar':
+        e.preventDefault(); toast((await copy(text)) ? 'Texto copiado' : 'No se pudo copiar'); return
+      case 'regenerar':
+        e.preventDefault(); el.disabled = true
+        await api('/api/generar', { chatId: card.dataset.chat }); toast('Pedido. La IA tarda 1–2 minutos.'); return
+      case 'descartar':
+        e.preventDefault(); await api(`/api/borradores/${card.dataset.id}`, { estado: 'descartado' }); card.remove(); toast('Descartado'); return
+      case 'generar':
+        e.preventDefault(); el.disabled = true; el.textContent = 'En cola…'
+        await api('/api/generar', { chatId: el.dataset.chat }); toast('Pedido. Aparecerá en Borradores en 1–2 minutos.'); return
+    }
+  } catch (err) { toast(err.message) }
+})
+
+// ---------- Pendientes ----------
+async function viewPendientes() {
+  const [list] = await Promise.all([api('/api/pendientes'), loadEstado()])
+  $('#main').innerHTML = `<p class="note">Chats en los que el último mensaje no es tuyo (últimos 7 días, sin archivados ni silenciados).</p>` +
+    (list.length ? `<div class="list">${list.map(p => `
+      <div class="row">
+        <div class="grow">
+          <div class="t">${esc(p.nombre)} ${p.es_grupo ? '<span class="tag g">grupo</span>' : ''} ${p.sin_responder > 1 ? `<span class="tag w">${p.sin_responder}</span>` : ''}</div>
+          <div class="s">${p.es_grupo && p.de ? `<b>${esc(p.de)}:</b> ` : ''}${esc(p.texto)}</div>
+          <div style="margin-top:6px">${p.tiene_borrador ? '<a class="btn small" href="#borradores">Ver borrador</a>' : `<button class="btn small" data-act="generar" data-chat="${esc(p.chat_id)}">Generar borrador</button>`}</div>
+        </div>
+        <span class="time">${when(p.ultimo_mensaje)}</span>
+      </div>`).join('')}</div>` : '<div class="card empty">Nada pendiente. 🎉</div>')
+}
+
+// ---------- Tablas ----------
+const tabla = { nombre: 'messages', q: '', offset: 0 }
+async function viewTablas() {
+  const [list] = await Promise.all([api('/api/tablas'), loadEstado()])
+  const desc = { messages: 'Mensajes', chats: 'Chats', contacts: 'Contactos', drafts: 'Borradores', lid_map: 'IDs anónimos' }
+  $('#main').innerHTML = `
+    <p class="note">Base de datos PostgreSQL del Huawei, en modo solo lectura.</p>
+    <div class="chips">${list.map(t => `<button class="chip ${t.tabla === tabla.nombre ? 'on' : ''}" data-t="${t.tabla}">${desc[t.tabla] || t.tabla} · ${fmtN(t.filas)}</button>`).join('')}</div>
+    <input type="search" id="tq" placeholder="Buscar en ${esc(desc[tabla.nombre] || tabla.nombre)}…" value="${esc(tabla.q)}" style="margin-top:10px">
+    <div id="tdata"><div class="empty">Cargando…</div></div>`
+  $('#main').querySelectorAll('.chip').forEach(c => c.onclick = () => { tabla.nombre = c.dataset.t; tabla.q = ''; tabla.offset = 0; viewTablas() })
+  let timer; $('#tq').oninput = e => { clearTimeout(timer); timer = setTimeout(() => { tabla.q = e.target.value; tabla.offset = 0; loadTabla() }, 350) }
+  loadTabla()
+}
+function cell(v) {
+  if (v === null || v === undefined) return '<span class="note">—</span>'
+  if (typeof v === 'boolean') return v ? '✓' : '—'
+  if (Array.isArray(v)) v = v.join(', ')
+  if (typeof v === 'string' && /^\d{4}-\d\d-\d\dT/.test(v)) return esc(new Date(v).toLocaleString('es-ES'))
+  const s = String(v)
+  return `<span title="${esc(s)}">${esc(s.length > 140 ? s.slice(0, 140) + '…' : s)}</span>`
+}
+async function loadTabla() {
+  const d = await api(`/api/tablas/${tabla.nombre}?q=${encodeURIComponent(tabla.q)}&offset=${tabla.offset}`)
+  const el = $('#tdata'); if (!el) return
+  el.innerHTML = `<div class="tablewrap"><table><thead><tr>${d.columnas.map(c => `<th>${esc(c)}</th>`).join('')}</tr></thead>
+    <tbody>${d.filas.map(r => `<tr>${d.columnas.map(c => `<td>${cell(r[c])}</td>`).join('')}</tr>`).join('') || `<tr><td colspan="${d.columnas.length}" class="empty">Sin resultados</td></tr>`}</tbody></table></div>
+    <div class="pager"><button class="btn small" id="prev" ${d.offset <= 0 ? 'disabled' : ''}>‹ Anterior</button>
+    <span>${d.total ? `${fmtN(d.offset + 1)}–${fmtN(Math.min(d.offset + 50, d.total))} de ${fmtN(d.total)}` : '0'}</span>
+    <button class="btn small" id="next" ${d.offset + 50 >= d.total ? 'disabled' : ''}>Siguiente ›</button></div>`
+  $('#prev').onclick = () => { tabla.offset = Math.max(0, tabla.offset - 50); loadTabla() }
+  $('#next').onclick = () => { tabla.offset += 50; loadTabla() }
+}
+
+// ---------- Herramientas ----------
+async function viewAjustes() {
+  await loadEstado()
+  const e = estado, ia = e.ia, tg = e.telegram, ts = e.tailscale, wa = e.whatsapp
+  const dot = c => `<span class="dot ${c}"></span>`
+  const iaDot = ia.disponible && ia.instalado ? 'ok' : ia.descargando || ia.disponible ? 'warn' : 'bad'
+  $('#main').innerHTML = `
+    <div class="card tool"><h3>${dot(wa.estado === 'conectado' ? 'ok' : wa.estado === 'esperando QR' ? 'warn' : 'bad')}WhatsApp</h3>
+      <dl class="kv"><dt>Estado</dt><dd>${esc(wa.estado)}${wa.usuario ? ` · ${esc(wa.usuario)}` : ''}</dd>
+      <dt>Conectado desde</dt><dd>${wa.conectadoDesde ? when(wa.conectadoDesde) : '—'}</dd>
+      <dt>Histórico recibido</dt><dd>${fmtN(wa.historicoRecibido)} mensajes en esta sesión</dd>
+      <dt>Modo</dt><dd><b>Solo lectura</b>: nunca envía, no marca como leído, no te pone «en línea»</dd></dl></div>
+
+    <div class="card tool"><h3>${dot(iaDot)}IA local (Ollama)</h3>
+      <dl class="kv"><dt>Modelo</dt><dd>${esc(ia.modelo)} ${ia.instalado ? '<span class="tag g">instalado</span>' : ia.descargando ? '<span class="tag w">descargando…</span>' : ''}</dd>
+      <dt>Ahora</dt><dd>${ia.generando ? 'Redactando un borrador…' : 'En espera'}${ia.cola ? ` · ${ia.cola} en cola` : ''}</dd>
+      ${ia.ultimoMs ? `<dt>Último borrador</dt><dd>${Math.round(ia.ultimoMs / 1000)} s</dd>` : ''}</dl>
+      ${ia.error ? `<div class="errbox" style="margin-top:10px">${esc(ia.error)}</div>` : ''}
+      ${ia.ultimoError ? `<div class="errbox" style="margin-top:10px">Último fallo: ${esc(ia.ultimoError)}</div>` : ''}
+      <p class="note">Funciona dentro del Huawei, sin internet. Tus mensajes no salen del ordenador.</p></div>
+
+    <div class="card tool"><h3>${dot(ts.publicado ? 'ok' : ts.instalado ? 'warn' : 'bad')}Acceso desde el iPhone (Tailscale)</h3>
+      ${ts.publicado ? `<p>Abre esta dirección en Safari del iPhone, con Tailscale activado:</p><p><a href="${esc(ts.url)}">${esc(ts.url)}</a></p><p class="note">Consejo: en Safari, Compartir → «Añadir a pantalla de inicio».</p>`
+        : `<p>${ts.instalado ? (ts.conectado ? 'Tailscale está conectado, pero el panel aún no está publicado.' : 'Tailscale está instalado, pero sin iniciar sesión.') : 'Tailscale no está instalado.'}</p><p class="note">En el Huawei, haz doble clic en <b>movil.cmd</b> (carpeta del escritorio) y sigue los pasos.</p>`}
+      <p class="note">Red privada entre tus aparatos: el panel no se publica en internet.</p></div>
+
+    <div class="card tool"><h3>${dot(tg.estado === 'vinculado' ? 'ok' : tg.estado === 'esperando vinculacion' ? 'warn' : '')}Avisos en Telegram <span class="tag">opcional</span></h3>
+      ${tg.estado === 'sin configurar' ? `
+        <ol class="note" style="padding-left:18px;margin:0 0 10px"><li>En Telegram, abre <b>@BotFather</b> → <b>/newbot</b> y ponle un nombre.</li><li>Copia el <b>token</b> que te da y pégalo aquí.</li></ol>
+        <input type="password" id="tg-token" placeholder="123456789:AA…" autocomplete="off">
+        <div class="actions"><button class="btn primary" id="tg-save">Guardar token</button></div>`
+      : tg.estado === 'esperando vinculacion' ? `
+        <p>Bot <b>@${esc(tg.bot)}</b> listo. Falta vincularlo a tu Telegram:</p>
+        ${tg.enlace ? `<div class="actions"><a class="btn primary" href="${esc(tg.enlace)}" target="_blank" rel="noopener">Abrir en Telegram y pulsar «Iniciar»</a></div>` : ''}
+        <div class="actions"><button class="btn danger small" data-tg="desvincular">Cancelar</button></div>`
+      : `
+        <p>Vinculado con <b>@${esc(tg.bot)}</b>.</p>
+        <label class="radio"><input type="radio" name="tgmodo" value="aviso" ${tg.modo !== 'completo' ? 'checked' : ''}><span><b>Solo aviso</b> (recomendado)<br><span class="note">«Tienes 2 borradores». Sin nombres ni contenido: nada de tus conversaciones pasa por Telegram.</span></span></label>
+        <label class="radio"><input type="radio" name="tgmodo" value="completo" ${tg.modo === 'completo' ? 'checked' : ''}><span><b>Borrador completo</b><br><span class="note">Nombre + borrador + botón para abrir WhatsApp. Ese texto queda guardado en los servidores de Telegram.</span></span></label>
+        <div class="actions"><button class="btn small" data-tg="probar">Enviar prueba</button><button class="btn danger small" data-tg="desvincular">Desvincular</button></div>`}
+      ${tg.error ? `<div class="errbox" style="margin-top:10px">${esc(tg.error)}</div>` : ''}</div>
+
+    <div class="card tool"><h3>${dot('')}Gmail · Calendar · Drive · Chrome</h3>
+      <p class="note">Fase 3, todavía sin conectar. Servirá para dar contexto a los borradores (tus citas, correos y documentos), solo leyendo de tu cuenta.</p></div>
+
+    <div class="card tool"><h3>${dot(e.excluidos ? 'ok' : '')}Números excluidos</h3>
+      <p><b>${e.excluidos}</b> número${e.excluidos === 1 ? '' : 's'} que el asistente no guarda ni usa nunca.</p>
+      <p class="note">Por seguridad, la lista solo se edita en el Huawei con <b>excluir.cmd</b>.</p></div>`
+
+  $('#tg-save')?.addEventListener('click', async () => {
+    try { await api('/api/telegram', { accion: 'token', token: $('#tg-token').value }); toast('Token guardado'); viewAjustes() } catch (err) { toast(err.message) }
+  })
+  $('#main').querySelectorAll('[data-tg]').forEach(b => b.onclick = async () => {
+    try { await api('/api/telegram', { accion: b.dataset.tg }); toast(b.dataset.tg === 'probar' ? 'Prueba enviada' : 'Hecho'); viewAjustes() } catch (err) { toast(err.message) }
+  })
+  $('#main').querySelectorAll('input[name=tgmodo]').forEach(r => r.onchange = async () => {
+    try { await api('/api/telegram', { accion: 'modo', modo: r.value }); toast('Guardado') } catch (err) { toast(err.message) }
+  })
+}
+
+const VIEWS = { inicio: viewInicio, borradores: viewBorradores, pendientes: viewPendientes, tablas: viewTablas, ajustes: viewAjustes }
+async function render() {
+  renderNav()
+  try { await VIEWS[current()]() }
+  catch (err) { $('#main').innerHTML = `<div class="errbox">No se pudo cargar: ${esc(err.message)}. ¿Está encendido el Huawei y el asistente abierto?</div>` }
+}
+window.addEventListener('hashchange', () => { window.scrollTo(0, 0); render() })
+setInterval(() => {
+  if (document.hidden || document.activeElement?.matches('textarea, input')) return
+  if (['inicio', 'pendientes'].includes(current()) || (current() === 'borradores' && borradoresModo === 'pendiente')) render()
+}, 20000)
+
+// ---------- Datos de ejemplo (solo al abrir el archivo directamente, para ver el diseño) ----------
+function demoApi(path) {
+  const ago = m => new Date(Date.now() - m * 60000).toISOString()
+  const D = {
+    '/api/estado': { whatsapp: { estado: 'conectado', usuario: 'Mat', conectadoDesde: ago(90), historicoRecibido: 18342 }, memoria: { mensajes: 18342, chats: 214, desde: ago(60 * 24 * 180) }, pendientes: 6, borradores: 2,
+      ia: { disponible: true, instalado: true, descargando: false, modelo: 'qwen3:4b', error: null, cola: 0, generando: null, ultimoError: null, ultimoMs: 48000 },
+      telegram: { estado: 'vinculado', bot: 'mi_asistente_bot', modo: 'aviso', error: null }, tailscale: { instalado: true, conectado: true, publicado: true, url: 'https://huawei.tail1234.ts.net/' }, excluidos: 1, google: { estado: 'fase 3' } },
+    '/api/mensajes': [
+      { chat_id: '34600000001@s.whatsapp.net', chat: 'Laura', es_grupo: false, de: 'Laura', text: '¿Al final vienes el sábado a la cena? Dime algo antes del jueves 😊', ts: ago(12) },
+      { chat_id: '1203@g.us', chat: 'Pádel domingos', es_grupo: true, de: 'Javi', text: '@Mat te apuntas a las 10?', ts: ago(35) },
+      { chat_id: '34600000002@s.whatsapp.net', chat: 'Mamá', es_grupo: false, de: 'Mamá', text: '[foto] Mira qué bonito ha quedado el jardín', ts: ago(180) },
+    ],
+    '/api/borradores': [
+      { id: 1, chat_id: '34600000001@s.whatsapp.net', chat: 'Laura', es_grupo: false, created_at: ago(10), gen_ms: 48000, text: 'sii cuenta conmigo! llevo el vino 🍷',
+        contexto: [{ from_me: true, text: 'qué tal todo?' }, { from_me: false, text: 'Genial! Oye' }, { from_me: false, text: '¿Al final vienes el sábado a la cena? Dime algo antes del jueves 😊' }] },
+      { id: 2, chat_id: '1203@g.us', chat: 'Pádel domingos', es_grupo: true, created_at: ago(30), gen_ms: 39000, text: 'me apunto! a las 10 perfecto',
+        contexto: [{ from_me: false, de: 'Javi', text: '¿Quién juega el domingo?' }, { from_me: false, de: 'Javi', text: '@Mat te apuntas a las 10?' }] },
+    ],
+    '/api/pendientes': [
+      { chat_id: '34600000001@s.whatsapp.net', nombre: 'Laura', es_grupo: false, sin_responder: 2, de: 'Laura', texto: '¿Al final vienes el sábado a la cena?', ultimo_mensaje: ago(12), tiene_borrador: true },
+      { chat_id: '34600000002@s.whatsapp.net', nombre: 'Mamá', es_grupo: false, sin_responder: 1, de: 'Mamá', texto: '[foto] Mira qué bonito ha quedado el jardín', ultimo_mensaje: ago(180), tiene_borrador: false },
+    ],
+    '/api/tablas': [{ tabla: 'messages', filas: 18342 }, { tabla: 'chats', filas: 214 }, { tabla: 'contacts', filas: 388 }, { tabla: 'drafts', filas: 12 }, { tabla: 'lid_map', filas: 97 }],
+  }
+  if (path.startsWith('/api/tablas/')) return { columnas: ['ts', 'chat_id', 'from_me', 'sender_name', 'text'], filas: D['/api/mensajes'].map(m => ({ ts: m.ts, chat_id: m.chat_id, from_me: false, sender_name: m.de, text: m.text })), total: 3, offset: 0 }
+  const key = path.split('?')[0]
+  if (key === '/api/borradores' && path.includes('historial')) return [{ id: 9, chat: 'Carlos', status: 'respondido', created_at: ago(600), text: 'vale, mañana te lo paso', my_reply: 'vale! mañana a primera hora te lo mando' }]
+  return D[key] ?? { ok: true }
+}
+if (DEMO) $('#demo').innerHTML = '<div class="demo">Vista de ejemplo con datos inventados</div>'
+
+render()
+</script>
+</body>
+</html>

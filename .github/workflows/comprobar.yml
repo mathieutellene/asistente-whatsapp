@@ -1,0 +1,41 @@
+name: comprobar
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  pruebas:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: asistente
+          POSTGRES_PASSWORD: prueba
+          POSTGRES_DB: asistente
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-audit --no-fund
+      - name: Sintaxis de todos los archivos
+        run: for f in $(find src -name '*.js'); do node --check "$f" || exit 1; done
+      - name: Preparar entorno de prueba
+        run: |
+          printf 'DATABASE_URL=postgres://asistente:prueba@localhost:5432/asistente\nEXCLUDE_FILE=/tmp/excluidos.txt\nSETTINGS_FILE=/tmp/ajustes.json\nPANEL_PORT=8799\n' > .env
+          printf '# prueba\n+34 600 111 222\n' > /tmp/excluidos.txt
+      - name: Crear tablas (dos veces, debe ser idempotente)
+        run: npm run db:init && npm run db:init
+      - name: Pruebas
+        run: npm run selftest
+      - name: El codigo de WhatsApp no puede enviar nada
+        run: |
+          if grep -nE 'sock\.(sendMessage|readMessages|sendPresenceUpdate|chatModify|sendReceipt|relayMessage|updateProfile)' src/*.js; then
+            echo "Encontrada una llamada que envia algo a WhatsApp" && exit 1
+          fi
+          echo "OK: ninguna llamada de envio a WhatsApp"

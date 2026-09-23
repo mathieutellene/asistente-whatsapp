@@ -1,5 +1,9 @@
 import { pool, purgeJids } from './db.js'
+import './drafts.js' // escucha los mensajes nuevos y prepara borradores
 import { excludedJids, excludedNumbers } from './exclusions.js'
+import { startOllama } from './ollama.js'
+import { startPanel } from './panel/server.js'
+import { startTelegram } from './telegram.js'
 import { startWhatsApp } from './whatsapp.js'
 
 // Al iniciar sesion en Windows, PostgreSQL puede tardar en arrancar: reintentamos hasta 2 minutos.
@@ -21,6 +25,9 @@ for (let intento = 1; ; intento++) {
 const borrados = await purgeJids(excludedJids())
 console.log(`Numeros excluidos: ${excludedNumbers.size}${borrados ? ` (borrados ${borrados} registros suyos que ya estaban guardados)` : ''}`)
 
+startPanel()
+startOllama()
+startTelegram()
 await startWhatsApp()
 
 process.on('SIGINT', async () => {

@@ -8,6 +8,7 @@ import pino from 'pino'
 import qrcode from 'qrcode-terminal'
 import { config } from './config.js'
 import * as db from './db.js'
+import { bus } from './events.js'
 import { isExcluded } from './exclusions.js'
 import { extractContent, toNum } from './extract.js'
 
@@ -17,6 +18,12 @@ let sock
 let queue = Promise.resolve()
 let total = 0
 let retries = 0
+
+/** Estado para el panel. */
+export const waStatus = { estado: 'iniciando', usuario: null, conectadoDesde: null, historicoRecibido: 0 }
+
+/** Tus propios IDs (numero y @lid), para saber si te mencionan en un grupo. */
+export const getMe = () => ({ pn: norm(sock?.user?.id), lid: norm(sock?.user?.lid) })
 
 const isGroup = jid => !!jid?.endsWith('@g.us')
 const isIgnored = jid => !jid || jid.endsWith('@broadcast') || jid.endsWith('@newsletter')
@@ -61,7 +68,7 @@ async function canon(jid, alt) {
   return j
 }
 
-async function storeMessages(list) {
+async function storeMessages(list, live = false) {
   const cutoff = cutoffMs()
   const me = norm(sock?.user?.id)
   const rows = []
@@ -104,6 +111,7 @@ async function storeMessages(list) {
   if (!rows.length) return 0
   const n = await db.insertMessages(rows)
   total += n
+  bus.emit('mensajes', { rows, live })
   return n
 }
 
@@ -144,12 +152,15 @@ async function storeGroups(list) {
 
 async function onConnection({ connection, lastDisconnect, qr }) {
   if (qr) {
+    waStatus.estado = 'esperando QR'
     console.log('\nEscanea este QR con el movil: WhatsApp > Ajustes > Dispositivos vinculados > Vincular un dispositivo\n')
     qrcode.generate(qr, { small: true })
   }
   if (connection === 'open') {
     retries = 0
+    Object.assign(waStatus, { estado: 'conectado', usuario: sock.user?.name || null, conectadoDesde: new Date() })
     console.log(`Conectado a WhatsApp como ${sock.user?.name || sock.user?.id}. Recibiendo mensajes...`)
+    bus.emit('conectado')
     try {
       await storeGroups(Object.values(await sock.groupFetchAllParticipating()))
     } catch (err) {
@@ -157,6 +168,7 @@ async function onConnection({ connection, lastDisconnect, qr }) {
     }
   }
   if (connection === 'close') {
+    waStatus.estado = 'reconectando'
     const code = lastDisconnect?.error?.output?.statusCode
     if (code === DisconnectReason.loggedOut) {
       console.error('\nWhatsApp ha desvinculado este equipo (o pasaron mas de 14 dias apagado).')
@@ -181,11 +193,13 @@ async function handle(events, saveCreds) {
     await storeContacts(contacts)
     await storeChats(chats)
     const n = await storeMessages(messages)
+    waStatus.historicoRecibido += n
     console.log(`Historico: +${n} mensajes${progress != null ? ` (progreso ${progress}%)` : ''} | total guardado en esta sesion: ${total}`)
   }
   if (events['messages.upsert']) {
-    const n = await storeMessages(events['messages.upsert'].messages)
-    if (n && events['messages.upsert'].type === 'notify') console.log(`Nuevo(s) mensaje(s): ${n}`)
+    const live = events['messages.upsert'].type === 'notify'
+    const n = await storeMessages(events['messages.upsert'].messages, live)
+    if (n && live) console.log(`Nuevo(s) mensaje(s): ${n}`)
   }
   if (events['chats.upsert']) await storeChats(events['chats.upsert'])
   if (events['chats.update']) await storeChats(events['chats.update'])

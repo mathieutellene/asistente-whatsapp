@@ -43,6 +43,7 @@ try {
     Write-Host "`n[1/5] Instalando Node.js y Ollama (fuentes oficiales)..." -ForegroundColor Green
     Install-Pkg 'OpenJS.NodeJS.LTS'
     Install-Pkg 'Ollama.Ollama'
+    Install-Pkg 'Tailscale.Tailscale'   # red privada para abrir el panel desde el movil
 
     if (Test-Path "$root\.env") {
         Write-Host "`n[2/5] Ya existe .env: la base de datos ya estaba creada." -ForegroundColor Yellow
@@ -110,8 +111,10 @@ try {
     Register-ScheduledTask -TaskName 'Asistente WhatsApp' -Action $action -Trigger $trigger -Settings $settings -Force | Out-Null
 
     Stop-Transcript | Out-Null
-    Write-Host "`nTODO LISTO. Se abre ahora la ventana del asistente: escanea el QR con el movil" -ForegroundColor Green
+    Write-Host "`nTODO LISTO. Se abre ahora la ventana del asistente." -ForegroundColor Green
+    Write-Host "Si WhatsApp aun no esta vinculado, escanea el QR con el movil" -ForegroundColor Green
     Write-Host "(WhatsApp > Ajustes > Dispositivos vinculados > Vincular un dispositivo)." -ForegroundColor Green
+    Write-Host "Panel de control: panel.cmd  |  Acceso desde el iPhone: movil.cmd" -ForegroundColor Green
     # explorer.exe lo abre SIN permisos de administrador, como un doble clic normal
     Start-Process explorer.exe "`"$root\iniciar.cmd`""
     Start-Sleep -Seconds 8

@@ -1,6 +1,6 @@
 {
   "name": "asistente-whatsapp",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "description": "IA local que lee tu WhatsApp (solo lectura) y prepara borradores de respuesta",
   "type": "module",
@@ -10,7 +10,9 @@
   "scripts": {
     "start": "node --env-file=.env src/index.js",
     "db:init": "node --env-file=.env src/scripts/init-db.js",
-    "pendientes": "node --env-file=.env src/scripts/pendientes.js"
+    "pendientes": "node --env-file=.env src/scripts/pendientes.js",
+    "movil": "node --env-file=.env src/scripts/movil.js",
+    "selftest": "node --env-file=.env src/scripts/selftest.js"
   },
   "dependencies": {
     "baileys": "7.0.0-rc14",
