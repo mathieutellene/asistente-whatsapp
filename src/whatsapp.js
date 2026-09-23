@@ -8,6 +8,7 @@ import pino from 'pino'
 import qrcode from 'qrcode-terminal'
 import { config } from './config.js'
 import * as db from './db.js'
+import { isExcluded } from './exclusions.js'
 import { extractContent, toNum } from './extract.js'
 
 const logger = pino({ level: config.logLevel })
@@ -27,7 +28,9 @@ async function remember(lid, pn) {
   if (!lid?.endsWith('@lid') || !pn || pn.endsWith('@lid') || lidCache.get(lid) === pn) return
   lidCache.set(lid, pn)
   try {
-    await db.mergeLid(lid, pn)
+    // Si resulta ser un numero excluido, se borra lo que hubiera entrado con su ID anonimo
+    if (isExcluded(pn)) await db.purgeJids([pn, lid])
+    else await db.mergeLid(lid, pn)
   } catch (err) {
     logger.warn({ err }, 'no se pudo unificar lid')
   }
@@ -77,6 +80,9 @@ async function storeMessages(list) {
       const senderJid = fromMe ? me
         : group ? await canon(msg.key.participant, msg.key.participantAlt)
         : chatId
+      // Numeros excluidos: se descartan aqui, en memoria, antes de escribir nada en disco
+      if (isExcluded(chatId) || isExcluded(senderJid)) continue
+      const mentions = content.mentions?.filter(j => !isExcluded(norm(j)) && !isExcluded(lidCache.get(norm(j))))
       if (!fromMe && msg.pushName && senderJid) names.set(senderJid, msg.pushName)
       rows.push({
         chat_id: chatId,
@@ -88,7 +94,7 @@ async function storeMessages(list) {
         type: content.type,
         text: content.text,
         quoted_id: content.quotedId,
-        mentions: content.mentions,
+        mentions: mentions?.length ? mentions : null,
       })
     } catch (err) {
       logger.warn({ err }, 'mensaje ignorado')
@@ -105,6 +111,7 @@ async function storeChats(list) {
   for (const c of list || []) {
     if (isIgnored(c.id)) continue
     const id = isGroup(c.id) ? norm(c.id) : await canon(c.id, c.pnJid)
+    if (isExcluded(id)) continue
     const mute = c.muteEndTime === undefined ? undefined : toNum(c.muteEndTime)
     await db.upsertChat({
       chat_id: id,
@@ -124,7 +131,7 @@ async function storeContacts(list) {
     if (c.id?.endsWith('@lid') && c.phoneNumber) await remember(norm(c.id), norm(c.phoneNumber))
     if (c.lid && !c.id?.endsWith('@lid')) await remember(norm(c.lid), norm(c.id))
     const jid = await canon(c.id, c.phoneNumber)
-    if (!jid || isGroup(jid)) continue
+    if (!jid || isGroup(jid) || isExcluded(jid)) continue
     await db.upsertContact({ jid, name: c.name ?? undefined, notify: c.notify ?? c.verifiedName ?? undefined })
   }
 }

@@ -47,6 +47,34 @@ export const upsertChat = chat =>
 export const upsertContact = contact =>
   upsert('contacts', 'jid', contact, ['name', 'notify'], ['name', 'notify'])
 
+/**
+ * Borra TODO lo relacionado con estos numeros (chats, sus mensajes en grupos, contacto, menciones)
+ * y compacta las tablas para que los datos borrados no queden en los ficheros de la base de datos.
+ */
+export async function purgeJids(jids) {
+  if (!jids.length) return 0
+  const c = await pool.connect()
+  let deleted = 0
+  try {
+    await c.query('BEGIN')
+    const { rows } = await c.query('SELECT lid FROM lid_map WHERE pn = ANY($1)', [jids])
+    const all = [...jids, ...rows.map(r => r.lid)]
+    deleted += (await c.query('DELETE FROM messages WHERE chat_id = ANY($1) OR sender_jid = ANY($1)', [all])).rowCount
+    deleted += (await c.query('UPDATE messages SET mentions = NULL WHERE mentions && $1::text[]', [all])).rowCount
+    deleted += (await c.query('DELETE FROM chats WHERE chat_id = ANY($1)', [all])).rowCount
+    deleted += (await c.query('DELETE FROM contacts WHERE jid = ANY($1)', [all])).rowCount
+    deleted += (await c.query('DELETE FROM lid_map WHERE pn = ANY($1) OR lid = ANY($1)', [all])).rowCount
+    await c.query('COMMIT')
+  } catch (err) {
+    await c.query('ROLLBACK')
+    throw err
+  } finally {
+    c.release()
+  }
+  if (deleted) await pool.query('VACUUM FULL messages, chats, contacts, lid_map')
+  return deleted
+}
+
 export async function getPnForLid(lid) {
   const { rows } = await pool.query('SELECT pn FROM lid_map WHERE lid = $1', [lid])
   return rows[0]?.pn || null

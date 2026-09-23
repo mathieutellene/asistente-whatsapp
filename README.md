@@ -20,6 +20,12 @@ Se instala todo solo y al final aparece el QR para vincular WhatsApp. Para actua
 - **Escritorio\asistente-whatsapp**: el programa. `iniciar.cmd` lo arranca (ya lo hace solo al iniciar sesión) y `pendientes.cmd` muestra lo que tienes sin contestar.
 - **%LOCALAPPDATA%\asistente-whatsapp**: la sesión de WhatsApp, la contraseña de administrador de PostgreSQL y el registro de la instalación. Está fuera del escritorio para que OneDrive no la sincronice.
 
+## Números excluidos
+Haz doble clic en **`excluir.cmd`**. Se abre el Bloc de notas: escribe un número por línea, con prefijo de país (`34600111222` o `+34 600 111 222`), guarda y cierra.
+- Sus mensajes se descartan en memoria, antes de escribir nada en disco: ni en chats individuales, ni en grupos, ni como menciones.
+- Al aplicar la lista se borra todo lo suyo que ya estuviera guardado y se compacta la base de datos.
+- La lista está en `%LOCALAPPDATA%\asistente-whatsapp\excluidos.txt`: solo en este ordenador, fuera de OneDrive y fuera de GitHub.
+
 ## Seguridad
 - Solo usa la librería oficial `baileys` en una versión fija (7.0.0-rc14, publicada por WhiskeySockets). No instales nunca forks ni "versiones mejoradas": en 2025 un clon llamado *lotusbail* robaba cuentas de WhatsApp.
 - El código no llama a ninguna función de envío ni de "marcar como leído". No apareces "en línea" y el móvil sigue recibiendo las notificaciones.

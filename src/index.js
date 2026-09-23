@@ -1,4 +1,5 @@
-import { pool } from './db.js'
+import { pool, purgeJids } from './db.js'
+import { excludedJids, excludedNumbers } from './exclusions.js'
 import { startWhatsApp } from './whatsapp.js'
 
 // Al iniciar sesion en Windows, PostgreSQL puede tardar en arrancar: reintentamos hasta 2 minutos.
@@ -15,6 +16,10 @@ for (let intento = 1; ; intento++) {
     await new Promise(r => setTimeout(r, 5000))
   }
 }
+
+// Antes de conectar: borrar cualquier resto de los numeros excluidos
+const borrados = await purgeJids(excludedJids())
+console.log(`Numeros excluidos: ${excludedNumbers.size}${borrados ? ` (borrados ${borrados} registros suyos que ya estaban guardados)` : ''}`)
 
 await startWhatsApp()
 
