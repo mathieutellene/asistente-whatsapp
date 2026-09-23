@@ -1,0 +1,68 @@
+-- Memoria del asistente (PostgreSQL). Idempotente: se puede ejecutar varias veces.
+
+CREATE TABLE IF NOT EXISTS chats (
+  chat_id     text PRIMARY KEY,           -- 34600000000@s.whatsapp.net  |  1234-5678@g.us
+  name        text,
+  is_group    boolean NOT NULL DEFAULT false,
+  archived    boolean NOT NULL DEFAULT false,
+  muted_until timestamptz,
+  updated_at  timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS contacts (
+  jid        text PRIMARY KEY,
+  name       text,                        -- nombre en tu agenda del móvil
+  notify     text,                        -- nombre que se pone la persona en WhatsApp
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS messages (
+  chat_id     text NOT NULL,
+  msg_id      text NOT NULL,
+  from_me     boolean NOT NULL,
+  sender_jid  text,
+  sender_name text,
+  ts          timestamptz NOT NULL,
+  type        text,
+  text        text,
+  quoted_id   text,
+  mentions    text[],
+  tsv         tsvector GENERATED ALWAYS AS (to_tsvector('spanish', coalesce(text, ''))) STORED,
+  PRIMARY KEY (chat_id, msg_id)
+);
+CREATE INDEX IF NOT EXISTS messages_chat_ts_idx ON messages (chat_id, ts DESC);
+CREATE INDEX IF NOT EXISTS messages_sender_idx  ON messages (sender_jid);
+CREATE INDEX IF NOT EXISTS messages_tsv_idx     ON messages USING gin (tsv);
+
+-- WhatsApp identifica a algunos contactos con un ID anónimo (@lid); aquí guardamos su número real.
+CREATE TABLE IF NOT EXISTS lid_map (
+  lid text PRIMARY KEY,
+  pn  text NOT NULL
+);
+
+-- Chats cuyo último mensaje NO es tuyo (sin archivar ni silenciar).
+CREATE OR REPLACE VIEW pendientes AS
+WITH ultimo AS (
+  SELECT DISTINCT ON (chat_id) chat_id, from_me, ts, sender_name, text
+  FROM messages
+  ORDER BY chat_id, ts DESC
+), mi_ultimo AS (
+  SELECT chat_id, max(ts) AS ts FROM messages WHERE from_me GROUP BY chat_id
+)
+SELECT
+  u.chat_id,
+  COALESCE(ch.name, ct.name, ct.notify, split_part(u.chat_id, '@', 1)) AS nombre,
+  COALESCE(ch.is_group, u.chat_id LIKE '%@g.us')                       AS es_grupo,
+  (SELECT count(*)::int FROM messages m
+    WHERE m.chat_id = u.chat_id AND NOT m.from_me
+      AND m.ts > COALESCE(mi.ts, '-infinity'::timestamptz))             AS sin_responder,
+  u.ts          AS ultimo_mensaje,
+  u.sender_name AS de,
+  u.text        AS texto
+FROM ultimo u
+LEFT JOIN chats     ch ON ch.chat_id = u.chat_id
+LEFT JOIN contacts  ct ON ct.jid     = u.chat_id
+LEFT JOIN mi_ultimo mi ON mi.chat_id = u.chat_id
+WHERE NOT u.from_me
+  AND NOT COALESCE(ch.archived, false)
+  AND (ch.muted_until IS NULL OR ch.muted_until < now());

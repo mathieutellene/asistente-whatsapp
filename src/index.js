@@ -1,0 +1,24 @@
+import { pool } from './db.js'
+import { startWhatsApp } from './whatsapp.js'
+
+// Al iniciar sesion en Windows, PostgreSQL puede tardar en arrancar: reintentamos hasta 2 minutos.
+for (let intento = 1; ; intento++) {
+  try {
+    await pool.query('SELECT 1 FROM messages LIMIT 1')
+    break
+  } catch (err) {
+    if (intento >= 24) {
+      console.error('No puedo usar PostgreSQL:', err.message)
+      console.error('Comprueba que el servicio PostgreSQL esta arrancado y que se ejecuto scripts\\setup.ps1.')
+      process.exit(1)
+    }
+    await new Promise(r => setTimeout(r, 5000))
+  }
+}
+
+await startWhatsApp()
+
+process.on('SIGINT', async () => {
+  await pool.end()
+  process.exit(0)
+})
