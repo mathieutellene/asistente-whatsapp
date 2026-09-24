@@ -1,3 +1,5 @@
+import net from 'node:net'
+import { config } from './config.js'
 import { pool, purgeJids } from './db.js'
 import './drafts.js' // escucha los mensajes nuevos y prepara borradores
 import { excludedJids, excludedNumbers } from './exclusions.js'
@@ -7,6 +9,19 @@ import { startPanel } from './panel/server.js'
 import { startProfiles } from './profiles.js'
 import { startTelegram } from './telegram.js'
 import { startWhatsApp } from './whatsapp.js'
+
+// Solo puede haber un asistente a la vez (dos chocarian en WhatsApp). Si el panel ya responde, salimos
+// con el codigo 3 y iniciar.cmd cierra esta ventana en vez de reintentar.
+const yaAbierto = await new Promise(resolve => {
+  const s = net.connect(config.panelPort, '127.0.0.1')
+  s.once('connect', () => { s.destroy(); resolve(true) })
+  s.once('error', () => resolve(false))
+  s.setTimeout(1500, () => { s.destroy(); resolve(false) })
+})
+if (yaAbierto) {
+  console.log('Ya hay otro asistente funcionando en este ordenador. Esta ventana se cierra sola.')
+  process.exit(3)
+}
 
 // Al iniciar sesion en Windows, PostgreSQL puede tardar en arrancar: reintentamos hasta 2 minutos.
 for (let intento = 1; ; intento++) {

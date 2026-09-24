@@ -107,7 +107,10 @@ try {
     Write-Host "`n[5/5] Arranque automatico al iniciar sesion..." -ForegroundColor Green
     $action = New-ScheduledTaskAction -Execute "$root\iniciar.cmd" -WorkingDirectory $root
     $trigger = New-ScheduledTaskTrigger -AtLogOn -User "$env:USERDOMAIN\$env:USERNAME"
-    $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero)
+    # Vigilante: cada 5 minutos, si el asistente no esta abierto (p. ej. se cerro la ventana), lo vuelve a abrir.
+    # Si ya esta abierto no hace nada (IgnoreNew).
+    $trigger.Repetition = (New-ScheduledTaskTrigger -Once -At (Get-Date) -RepetitionInterval (New-TimeSpan -Minutes 5)).Repetition
+    $settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances IgnoreNew -StartWhenAvailable
     Register-ScheduledTask -TaskName 'Asistente WhatsApp' -Action $action -Trigger $trigger -Settings $settings -Force | Out-Null
 
     Stop-Transcript | Out-Null
@@ -115,8 +118,9 @@ try {
     Write-Host "Si WhatsApp aun no esta vinculado, escanea el QR con el movil" -ForegroundColor Green
     Write-Host "(WhatsApp > Ajustes > Dispositivos vinculados > Vincular un dispositivo)." -ForegroundColor Green
     Write-Host "Panel de control: panel.cmd  |  Acceso desde el iPhone: movil.cmd" -ForegroundColor Green
-    # explorer.exe lo abre SIN permisos de administrador, como un doble clic normal
-    Start-Process explorer.exe "`"$root\iniciar.cmd`""
+    # Se arranca a traves de la tarea (sin permisos de administrador, como un doble clic normal),
+    # asi el vigilante sabe que ya esta abierto y no abre otro
+    try { Start-ScheduledTask -TaskName 'Asistente WhatsApp' } catch { Start-Process explorer.exe "`"$root\iniciar.cmd`"" }
     Start-Sleep -Seconds 8
 } catch {
     Write-Host "`nERROR: $($_.Exception.Message)" -ForegroundColor Red

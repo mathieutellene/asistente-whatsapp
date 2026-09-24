@@ -6,7 +6,7 @@ $node | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction Silen
 if ($loop) {
     Write-Host 'Listo: el asistente se reinicia solo en 15 segundos con la lista nueva.' -ForegroundColor Green
 } else {
-    Start-Process explorer.exe "`"$root\iniciar.cmd`""
+    try { Start-ScheduledTask -TaskName 'Asistente WhatsApp' -ErrorAction Stop } catch { Start-Process explorer.exe "`"$root\iniciar.cmd`"" }
     Write-Host 'Listo: asistente arrancado con la lista nueva.' -ForegroundColor Green
 }
 Write-Host 'En su ventana veras "Numeros excluidos: N" y cuantos registros suyos se han borrado.'
