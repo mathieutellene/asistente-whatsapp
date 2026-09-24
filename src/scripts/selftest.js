@@ -2,10 +2,11 @@
 // extraccion, exclusiones, base de datos, vista de pendientes, prompt de borradores y panel.
 // OJO: vacia las tablas. Nunca ejecutarla contra la base de datos real.
 import assert from 'node:assert/strict'
-import { request } from 'node:http'
+import { createServer, request } from 'node:http'
 import { insertMessages, pool, purgeJids, upsertChat, upsertContact } from '../db.js'
 import { excludedJids, isExcluded } from '../exclusions.js'
 import { extractContent } from '../extract.js'
+import { chat, checkOllama, ensureModel, iaReady, iaStatus } from '../ollama.js'
 import { startPanel } from '../panel/server.js'
 import { buildPrompt, cleanDraft } from '../style.js'
 
@@ -72,7 +73,49 @@ assert.equal(cleanDraft('{"respuesta": "dime \\"cuándo\\" y voy"', 'Mat'), 'dim
 assert.match(prompt.system, /"respuesta"/)
 ok('pendientes y prompt del borrador')
 
-// 6. Panel
+// 6. IA con un Ollama simulado (OLLAMA_URL en CI apunta aqui): respuestas por partes,
+//    modelo anterior mientras se descarga el nuevo, progreso de descarga y borrado del antiguo
+let fakeModels = ['qwen3:4b']
+const fake = createServer((req, res) => {
+  let body = ''
+  req.on('data', d => { body += d })
+  req.on('end', () => {
+    const line = o => JSON.stringify(o) + '\n'
+    if (req.url === '/api/tags') return res.end(JSON.stringify({ models: fakeModels.map(name => ({ name, model: name })) }))
+    if (req.url === '/api/chat') {
+      assert.equal(JSON.parse(body).stream, true)
+      res.write(line({ message: { content: 'Okay, I need to answer...</think>{"respuesta": "sii' } }))
+      return setTimeout(() => res.end(line({ message: { content: ', allí estaré"}' }, done: true })), 100)
+    }
+    if (req.url === '/api/pull') {
+      res.write(line({ status: 'pulling', total: 200, completed: 100 }))
+      fakeModels.push(JSON.parse(body).model)
+      return setTimeout(() => res.end(line({ status: 'success' })), 100)
+    }
+    if (req.url === '/api/delete' && req.method === 'DELETE') {
+      fakeModels = fakeModels.filter(m => m !== JSON.parse(body).model)
+      return res.end()
+    }
+    res.statusCode = 404
+    res.end(line({ error: 'no encontrado' }))
+  })
+})
+await new Promise(r => fake.listen(Number(new URL(process.env.OLLAMA_URL).port), '127.0.0.1', r))
+await checkOllama()
+assert.equal(iaStatus.instalado, false)
+assert.equal(iaStatus.usando, 'qwen3:4b', 'mientras se descarga, usa el modelo anterior')
+assert.ok(iaReady())
+const reply = await chat([{ role: 'user', content: 'hola' }])
+assert.equal(reply.model, 'qwen3:4b')
+assert.equal(cleanDraft(reply.text, 'Mat'), 'sii, allí estaré')
+await ensureModel()
+assert.equal(iaStatus.instalado, true)
+assert.equal(iaStatus.usando, 'qwen3:4b-instruct')
+assert.deepEqual(fakeModels, ['qwen3:4b-instruct'], 'el modelo antiguo se borra')
+fake.close()
+ok('IA: respuestas por partes, modelo anterior durante la descarga y limpieza')
+
+// 7. Panel
 const server = startPanel(Number(process.env.PANEL_PORT) || 8799)
 await new Promise(r => server.once('listening', r))
 const base = `http://127.0.0.1:${server.address().port}`

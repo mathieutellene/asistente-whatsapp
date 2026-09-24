@@ -173,11 +173,24 @@ async function loadEstado() {
   renderPill(); renderNav()
 }
 
+// Aviso de por que no salen borradores (IA parada, descargando, trabajando...)
+function iaBanner() {
+  const ia = estado?.ia
+  if (!ia) return ''
+  if (!ia.disponible) return '<div class="errbox" style="margin-bottom:12px">La IA (Ollama) no responde en el Huawei, así que no se pueden preparar borradores. Suele arrancar sola al iniciar sesión en Windows; si no, reinicia el Huawei.</div>'
+  if (!ia.usando) return `<div class="warnbox" style="margin-bottom:12px">Descargando el modelo de IA${ia.progreso != null ? ` (${ia.progreso}%)` : ''}… Los borradores que pidas se harán en cuanto termine.</div>`
+  const parts = []
+  if (ia.descargando && ia.usando !== ia.modelo) parts.push(`Mientras se descarga el modelo nuevo (${ia.progreso ?? 0}%) se usa el anterior.`)
+  if (ia.generando || ia.cola) parts.push(`Redactando${ia.cola ? ` · ${ia.cola} más en cola` : ''}… cada borrador tarda 1–2 minutos.`)
+  if (ia.ultimoError) parts.push(`Último fallo: ${esc(ia.ultimoError)}`)
+  return parts.length ? `<div class="warnbox" style="margin-bottom:12px">${parts.join('<br>')}</div>` : ''
+}
+
 // ---------- Inicio ----------
 async function viewInicio() {
   const [msgs] = await Promise.all([api('/api/mensajes?limit=25'), loadEstado()])
   const e = estado, ia = e.ia
-  const iaTxt = !ia.disponible ? 'Ollama parado' : ia.descargando ? 'Descargando modelo' : !ia.instalado ? 'Sin modelo' : ia.generando ? 'Redactando…' : 'Lista'
+  const iaTxt = !ia.disponible ? 'Ollama parado' : !ia.usando ? `Descargando ${ia.progreso ?? 0}%` : ia.generando ? 'Redactando…' : 'Lista'
   $('#main').innerHTML = `
     <div class="kpis">
       <a class="kpi" href="#tablas"><b>${fmtN(e.memoria.mensajes)}</b><span>mensajes guardados${e.memoria.desde ? ` · desde ${new Date(e.memoria.desde).toLocaleDateString('es-ES')}` : ''}</span></a>
@@ -202,7 +215,7 @@ let borradoresModo = 'pendiente'
 async function viewBorradores() {
   const [list] = await Promise.all([api('/api/borradores' + (borradoresModo === 'historial' ? '?estado=historial' : '')), loadEstado()])
   const head = `<div class="seg"><button data-modo="pendiente" class="${borradoresModo === 'pendiente' ? 'on' : ''}">Pendientes</button><button data-modo="historial" class="${borradoresModo === 'historial' ? 'on' : ''}">Historial</button></div>
-    <p class="note">El asistente nunca envía nada. «Abrir en WhatsApp» abre el chat con el texto ya escrito: lo revisas y lo envías tú.</p>`
+    <p class="note">El asistente nunca envía nada. «Abrir en WhatsApp» abre el chat con el texto ya escrito: lo revisas y lo envías tú.</p>${iaBanner()}`
   if (!list.length) {
     $('#main').innerHTML = head + `<div class="card empty">${borradoresModo === 'pendiente' ? 'No hay borradores esperando.<br><span class="note">Se preparan solos cuando te escriben (en grupos, solo si te mencionan o te responden). También puedes pedir uno desde <a href="#pendientes">Pendientes</a>.</span>' : 'Aún no hay historial.'}</div>`
   } else if (borradoresModo === 'historial') {
@@ -265,14 +278,18 @@ document.addEventListener('click', async e => {
         toast('Copiado. Pégalo en el grupo.'); location.href = 'whatsapp://'; card.remove(); return
       case 'copiar':
         e.preventDefault(); toast((await copy(text)) ? 'Texto copiado' : 'No se pudo copiar'); return
-      case 'regenerar':
-        e.preventDefault(); el.disabled = true
-        await api('/api/generar', { chatId: card.dataset.chat }); toast('Pedido. La IA tarda 1–2 minutos.'); return
+      case 'regenerar': {
+        e.preventDefault(); el.disabled = true; el.textContent = 'En cola…'
+        const r = await api('/api/generar', { chatId: card.dataset.chat })
+        toast(r.iaLista ? 'Pedido. La IA tarda 1–2 minutos.' : 'Pedido, pero la IA aún no está lista: se hará en cuanto termine de descargarse.'); return
+      }
       case 'descartar':
         e.preventDefault(); await api(`/api/borradores/${card.dataset.id}`, { estado: 'descartado' }); card.remove(); toast('Descartado'); return
-      case 'generar':
+      case 'generar': {
         e.preventDefault(); el.disabled = true; el.textContent = 'En cola…'
-        await api('/api/generar', { chatId: el.dataset.chat }); toast('Pedido. Aparecerá en Borradores en 1–2 minutos.'); return
+        const r = await api('/api/generar', { chatId: el.dataset.chat })
+        toast(r.iaLista ? 'Pedido. Aparecerá en Borradores en 1–2 minutos.' : 'Pedido, pero la IA aún no está lista: se hará en cuanto termine de descargarse.'); return
+      }
     }
   } catch (err) { toast(err.message) }
 })
@@ -280,7 +297,7 @@ document.addEventListener('click', async e => {
 // ---------- Pendientes ----------
 async function viewPendientes() {
   const [list] = await Promise.all([api('/api/pendientes'), loadEstado()])
-  $('#main').innerHTML = `<p class="note">Chats en los que el último mensaje no es tuyo (últimos 7 días, sin archivados ni silenciados).</p>` +
+  $('#main').innerHTML = `<p class="note">Chats en los que el último mensaje no es tuyo (últimos 7 días, sin archivados ni silenciados).</p>${iaBanner()}` +
     (list.length ? `<div class="list">${list.map(p => `
       <div class="row">
         <div class="grow">
@@ -340,7 +357,8 @@ async function viewAjustes() {
       <dt>Modo</dt><dd><b>Solo lectura</b>: nunca envía, no marca como leído, no te pone «en línea»</dd></dl></div>
 
     <div class="card tool"><h3>${dot(iaDot)}IA local (Ollama)</h3>
-      <dl class="kv"><dt>Modelo</dt><dd>${esc(ia.modelo)} ${ia.instalado ? '<span class="tag g">instalado</span>' : ia.descargando ? '<span class="tag w">descargando…</span>' : ''}</dd>
+      <dl class="kv"><dt>Modelo</dt><dd>${esc(ia.modelo)} ${ia.instalado ? '<span class="tag g">instalado</span>' : ia.descargando ? `<span class="tag w">descargando ${ia.progreso ?? 0}%</span>` : '<span class="tag w">sin descargar</span>'}</dd>
+      ${ia.usando && ia.usando !== ia.modelo ? `<dt>Usando ahora</dt><dd>${esc(ia.usando)} (el anterior, mientras se descarga el nuevo)</dd>` : ''}
       <dt>Ahora</dt><dd>${ia.generando ? 'Redactando un borrador…' : 'En espera'}${ia.cola ? ` · ${ia.cola} en cola` : ''}</dd>
       ${ia.ultimoMs ? `<dt>Último borrador</dt><dd>${Math.round(ia.ultimoMs / 1000)} s</dd>` : ''}</dl>
       ${ia.error ? `<div class="errbox" style="margin-top:10px">${esc(ia.error)}</div>` : ''}
@@ -403,7 +421,7 @@ function demoApi(path) {
   const ago = m => new Date(Date.now() - m * 60000).toISOString()
   const D = {
     '/api/estado': { whatsapp: { estado: 'conectado', usuario: 'Mat', conectadoDesde: ago(90), historicoRecibido: 18342 }, memoria: { mensajes: 18342, chats: 214, desde: ago(60 * 24 * 180) }, pendientes: 6, borradores: 2,
-      ia: { disponible: true, instalado: true, descargando: false, modelo: 'qwen3:4b', error: null, cola: 0, generando: null, ultimoError: null, ultimoMs: 48000 },
+      ia: { disponible: true, instalado: true, descargando: false, progreso: null, modelo: 'qwen3:4b-instruct', usando: 'qwen3:4b-instruct', error: null, cola: 0, generando: null, ultimoError: null, ultimoMs: 48000 },
       telegram: { estado: 'vinculado', bot: 'mi_asistente_bot', modo: 'aviso', error: null }, tailscale: { instalado: true, conectado: true, publicado: true, url: 'https://huawei.tail1234.ts.net/' }, excluidos: 1, google: { estado: 'fase 3' } },
     '/api/mensajes': [
       { chat_id: '34600000001@s.whatsapp.net', chat: 'Laura', es_grupo: false, de: 'Laura', text: '¿Al final vienes el sábado a la cena? Dime algo antes del jueves 😊', ts: ago(12) },

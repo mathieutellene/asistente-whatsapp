@@ -1,5 +1,4 @@
 // Borradores: decide cuando preparar uno, lo genera con la IA local y lo guarda. NUNCA envia nada.
-import { config } from './config.js'
 import { pool } from './db.js'
 import { bus } from './events.js'
 import { chat as askModel, iaReady } from './ollama.js'
@@ -59,7 +58,7 @@ async function generate(chatId) {
   if (!last || last.from_me) return // ya has contestado
   const me = waStatus.usuario || 'yo'
   const prompt = await buildPrompt(chatId, me)
-  const { text, ms } = await askModel([
+  const { text, ms, model } = await askModel([
     { role: 'system', content: prompt.system },
     { role: 'user', content: prompt.user },
   ])
@@ -70,7 +69,7 @@ async function generate(chatId) {
   await pool.query(`UPDATE drafts SET status = 'reemplazado', updated_at = now() WHERE chat_id = $1 AND status = 'pendiente'`, [chatId])
   const { rows: [d] } = await pool.query(
     'INSERT INTO drafts (chat_id, trigger_msg_id, text, model, gen_ms) VALUES ($1, $2, $3, $4, $5) RETURNING id',
-    [chatId, again.msg_id, draft, config.ollamaModel, ms])
+    [chatId, again.msg_id, draft, model, ms])
   draftStatus.ultimoMs = ms
   console.log(`Borrador listo para ${prompt.nombre} (${Math.round(ms / 1000)} s).`)
   notifyDraft({ id: d.id, chatId, nombre: prompt.nombre, text: draft }).catch(() => {})

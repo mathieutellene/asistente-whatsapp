@@ -27,7 +27,7 @@ jobs:
         run: for f in $(find src -name '*.js'); do node --check "$f" || exit 1; done
       - name: Preparar entorno de prueba
         run: |
-          printf 'DATABASE_URL=postgres://asistente:prueba@localhost:5432/asistente\nEXCLUDE_FILE=/tmp/excluidos.txt\nSETTINGS_FILE=/tmp/ajustes.json\nPANEL_PORT=8799\n' > .env
+          printf 'DATABASE_URL=postgres://asistente:prueba@localhost:5432/asistente\nEXCLUDE_FILE=/tmp/excluidos.txt\nSETTINGS_FILE=/tmp/ajustes.json\nPANEL_PORT=8799\nOLLAMA_URL=http://127.0.0.1:11999\n' > .env
           printf '# prueba\n+34 600 111 222\n' > /tmp/excluidos.txt
       - name: Crear tablas (dos veces, debe ser idempotente)
         run: npm run db:init && npm run db:init

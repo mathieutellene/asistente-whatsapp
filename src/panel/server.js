@@ -6,7 +6,7 @@ import { config } from '../config.js'
 import { pool } from '../db.js'
 import { requestDraft, draftStatus } from '../drafts.js'
 import { excludedNumbers } from '../exclusions.js'
-import { iaStatus } from '../ollama.js'
+import { iaReady, iaStatus } from '../ollama.js'
 import {
   configureTelegram, setTelegramMode, telegramInfo, testTelegram, unlinkTelegram,
 } from '../telegram.js'
@@ -102,7 +102,7 @@ route('GET', /^\/api\/pendientes$/, async () => {
 route('POST', /^\/api\/generar$/, async (_q, body) => {
   if (typeof body.chatId !== 'string' || !/^[\w.:-]+@(s\.whatsapp\.net|g\.us|lid)$/.test(body.chatId)) throw httpError(400, 'chat no valido')
   requestDraft(body.chatId)
-  return { ok: true, cola: draftStatus.cola }
+  return { ok: true, cola: draftStatus.cola, iaLista: iaReady() }
 })
 
 route('GET', /^\/api\/tablas$/, async () => {
