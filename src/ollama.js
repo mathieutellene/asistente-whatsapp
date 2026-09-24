@@ -19,7 +19,10 @@ function request(path, { method = 'GET', body, onLine, idleMs = 30_000 } = {}) {
   return new Promise((resolve, reject) => {
     let failed = false
     const fail = err => { if (!failed) { failed = true; reject(err) } }
-    const req = http.request(new URL(path, config.ollamaUrl), { method, headers: { 'content-type': 'application/json' } }, res => {
+    const payload = body ? JSON.stringify(body) : ''
+    // content-length explicito: sin el, Node no manda el cuerpo en peticiones DELETE
+    const headers = { 'content-type': 'application/json', 'content-length': Buffer.byteLength(payload) }
+    const req = http.request(new URL(path, config.ollamaUrl), { method, headers }, res => {
       let buf = ''
       let last = null
       const handle = line => {
@@ -49,7 +52,7 @@ function request(path, { method = 'GET', body, onLine, idleMs = 30_000 } = {}) {
     })
     req.setTimeout(idleMs, () => req.destroy(new Error('Ollama no contesta (tiempo de espera agotado)')))
     req.on('error', fail)
-    req.end(body ? JSON.stringify(body) : undefined)
+    req.end(payload || undefined)
   })
 }
 
