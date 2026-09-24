@@ -5,9 +5,12 @@ export const iaStatus = {
   disponible: false, instalado: false, descargando: false, modelo: config.ollamaModel, error: null,
 }
 
-async function api(path, body, timeoutMs = 10_000) {
+// Modelo que se usaba antes: se borra al tener el nuevo, para no ocupar 2,5 GB de mas
+const OLD_MODELS = ['qwen3:4b']
+
+async function api(path, body, timeoutMs = 10_000, method = body ? 'POST' : 'GET') {
   const res = await fetch(config.ollamaUrl + path, {
-    method: body ? 'POST' : 'GET',
+    method,
     headers: { 'content-type': 'application/json' },
     body: body ? JSON.stringify(body) : undefined,
     signal: AbortSignal.timeout(timeoutMs),
@@ -16,12 +19,22 @@ async function api(path, body, timeoutMs = 10_000) {
   return res.json()
 }
 
+const fullName = m => (m.includes(':') ? m : `${m}:latest`)
+
 export async function checkOllama() {
   try {
     const { models = [] } = await api('/api/tags')
-    const wanted = config.ollamaModel.includes(':') ? config.ollamaModel : `${config.ollamaModel}:latest`
+    const has = name => models.some(m => m.name === fullName(name) || m.model === fullName(name))
     iaStatus.disponible = true
-    iaStatus.instalado = models.some(m => m.name === wanted || m.model === wanted)
+    iaStatus.instalado = has(config.ollamaModel)
+    if (iaStatus.instalado) {
+      for (const old of OLD_MODELS) {
+        if (fullName(old) !== fullName(config.ollamaModel) && has(old)) {
+          await api('/api/delete', { model: old, name: old }, 30_000, 'DELETE').catch(() => {})
+          console.log(`Borrado el modelo antiguo ${old} para liberar espacio.`)
+        }
+      }
+    }
     if (!iaStatus.descargando) iaStatus.error = null
   } catch {
     iaStatus.disponible = false
@@ -55,16 +68,24 @@ export function startOllama() {
 
 export const iaReady = () => iaStatus.disponible && iaStatus.instalado
 
-/** Pide una respuesta al modelo. Devuelve { text, ms }. */
+// La respuesta se fuerza a este JSON: asi el modelo no puede anadir explicaciones ni "pasos"
+const REPLY_FORMAT = {
+  type: 'object',
+  properties: { respuesta: { type: 'string' } },
+  required: ['respuesta'],
+}
+
+/** Pide una respuesta al modelo. Devuelve { text, ms } (text = JSON {"respuesta": ...} o texto). */
 export async function chat(messages) {
   const t0 = Date.now()
   const body = {
     model: config.ollamaModel,
     messages,
     stream: false,
-    think: false, // qwen3: sin "razonamiento" visible, mas rapido
+    think: false, // sin "razonamiento" visible, mas rapido
+    format: REPLY_FORMAT,
     keep_alive: '15m', // luego libera la RAM
-    options: { temperature: 0.7, num_ctx: 4096, num_predict: 220 },
+    options: { temperature: 0.6, num_ctx: 4096, num_predict: 220 },
   }
   let r
   try {

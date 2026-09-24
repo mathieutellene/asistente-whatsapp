@@ -1,6 +1,7 @@
 import { pool, purgeJids } from './db.js'
 import './drafts.js' // escucha los mensajes nuevos y prepara borradores
 import { excludedJids, excludedNumbers } from './exclusions.js'
+import { keepAwake } from './keepawake.js'
 import { startOllama } from './ollama.js'
 import { startPanel } from './panel/server.js'
 import { startTelegram } from './telegram.js'
@@ -25,6 +26,7 @@ for (let intento = 1; ; intento++) {
 const borrados = await purgeJids(excludedJids())
 console.log(`Numeros excluidos: ${excludedNumbers.size}${borrados ? ` (borrados ${borrados} registros suyos que ya estaban guardados)` : ''}`)
 
+keepAwake()
 startPanel()
 startOllama()
 startTelegram()

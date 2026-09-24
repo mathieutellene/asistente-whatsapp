@@ -79,7 +79,8 @@ export async function buildPrompt(chatId, meName = 'yo') {
   const where = info.es_grupo ? `el grupo de WhatsApp "${info.nombre}"` : `tu chat de WhatsApp con ${info.nombre}`
   const rules = [
     `Eres ${meName} y vas a escribir tu siguiente mensaje en ${where}.`,
-    'Escribe SOLO el texto del mensaje: sin comillas, sin explicaciones, sin "Yo:" delante y sin firmar.',
+    'Devuelve SOLO este JSON: {"respuesta": "<tu mensaje>"}. Dentro va unicamente el texto que enviarias:',
+    'sin explicar lo que vas a hacer, sin razonar, sin comillas extra, sin "Yo:" delante y sin firmar.',
   ]
   if (style) {
     rules.push(`Imita tu forma real de escribir ${style.scope}:`)
@@ -107,9 +108,27 @@ export async function buildPrompt(chatId, meName = 'yo') {
   return { system: rules.join('\n'), user: parts.join('\n'), nombre: info.nombre, esGrupo: info.es_grupo }
 }
 
+/** Saca el mensaje de la salida del modelo: JSON {"respuesta"}, sin razonamiento previo. */
+export function extractReply(raw) {
+  let t = String(raw || '')
+  const end = t.toLowerCase().lastIndexOf('</think>') // modelos "thinking": todo lo anterior es razonamiento
+  if (end >= 0) t = t.slice(end + '</think>'.length)
+  t = t.trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '')
+  try {
+    const j = JSON.parse(t)
+    if (typeof j?.respuesta === 'string') return j.respuesta
+  } catch {
+    const m = t.match(/"respuesta"\s*:\s*"((?:[^"\\]|\\.)*)"/)
+    if (m) {
+      try { return JSON.parse(`"${m[1]}"`) } catch { return m[1] }
+    }
+  }
+  return t
+}
+
 /** Limpia lo que devuelve el modelo. */
 export function cleanDraft(text, meName = '') {
-  let t = (text || '').replace(/<think>[\s\S]*?<\/think>/gi, '').trim()
+  let t = extractReply(text).replace(/<think>[\s\S]*?<\/think>/gi, '').trim()
   const names = ['tu', 'tú', 'yo']
   if (meName) names.push(meName.replace(/[.*+?^$()|[\]\\{}]/g, '\\$&'))
   t = t.replace(new RegExp('^(' + names.join('|') + ')\\s*:\\s*', 'i'), '')

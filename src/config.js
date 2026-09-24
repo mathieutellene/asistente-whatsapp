@@ -13,7 +13,8 @@ export const config = {
   panelPort: Number(process.env.PANEL_PORT || 8787),
   // IA local
   ollamaUrl: process.env.OLLAMA_URL || 'http://127.0.0.1:11434',
-  ollamaModel: process.env.OLLAMA_MODEL || 'qwen3:4b',
+  // "instruct" contesta directamente; "qwen3:4b" a secas es la version que "piensa en voz alta"
+  ollamaModel: process.env.OLLAMA_MODEL || 'qwen3:4b-instruct',
 }
 
 if (!config.databaseUrl) {

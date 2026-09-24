@@ -64,6 +64,12 @@ assert.match(prompt.user, /sábado/)
 assert.equal(prompt.nombre, 'Ana')
 assert.equal(cleanDraft('Tú: "vale, allí estaré"', 'Mat'), 'vale, allí estaré')
 assert.equal(cleanDraft('<think>mmm</think>\nMat: claro!', 'Mat'), 'claro!')
+// Salida real de un modelo "thinking": razonamiento en ingles sin <think> de apertura
+assert.equal(cleanDraft("Okay, I understand I need to answer Mat's message. I see the previous...</think>\n\n{\"respuesta\": \"sii, allí estaré 😊\"}", 'Mat'), 'sii, allí estaré 😊')
+assert.equal(cleanDraft('{"respuesta": "vale, mañana te lo paso"}', 'Mat'), 'vale, mañana te lo paso')
+assert.equal(cleanDraft('```json\n{"respuesta": "perfecto!"}\n```', 'Mat'), 'perfecto!')
+assert.equal(cleanDraft('{"respuesta": "dime \\"cuándo\\" y voy"', 'Mat'), 'dime "cuándo" y voy') // JSON cortado
+assert.match(prompt.system, /"respuesta"/)
 ok('pendientes y prompt del borrador')
 
 // 6. Panel
