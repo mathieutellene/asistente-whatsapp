@@ -98,6 +98,27 @@ td { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: n
 label.radio { display: flex; gap: 10px; align-items: flex-start; padding: 8px 0; cursor: pointer; }
 label.radio input { margin-top: 4px; accent-color: var(--accent); }
 .demo { background: var(--warn-soft); color: var(--warn); text-align: center; font-size: 12px; padding: 4px; }
+.alts { margin: 2px 0 8px; }
+.alts .chip { font-size: 12.5px; padding: 5px 11px; }
+.used { font-size: 12px; color: var(--muted); margin: 8px 0 0; }
+.modal { position: fixed; inset: 0; z-index: 30; background: rgba(0,0,0,.45); display: flex; align-items: flex-end; justify-content: center; }
+.modal .sheet { background: var(--card); width: 100%; max-width: 620px; max-height: 88vh; overflow-y: auto; border-radius: 18px 18px 0 0; padding: 18px 16px calc(18px + env(safe-area-inset-bottom)); }
+@media (min-width: 700px) { .modal { align-items: center; } .modal .sheet { border-radius: 18px; } }
+.modal h3 { margin: 0 0 4px; font-size: 18px; }
+.prof dt { font-weight: 600; font-size: 13px; color: var(--muted); margin-top: 10px; }
+.prof dd { margin: 2px 0 0; }
+.model { display: flex; gap: 10px; align-items: flex-start; padding: 10px 0; border-top: 1px solid var(--line); }
+.model:first-of-type { border-top: 0; }
+.model .grow { flex: 1; min-width: 0; }
+.switch { display: flex; align-items: center; gap: 12px; padding: 9px 0; border-top: 1px solid var(--line); cursor: pointer; }
+.switch:first-of-type { border-top: 0; }
+.switch .grow { flex: 1; }
+.switch input { appearance: none; -webkit-appearance: none; width: 44px; height: 26px; border-radius: 13px; background: var(--line); position: relative; flex: none; cursor: pointer; transition: background .15s; }
+.switch input::after { content: ''; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; transition: transform .15s; box-shadow: 0 1px 2px rgba(0,0,0,.2); }
+.switch input:checked { background: var(--accent); }
+.switch input:checked::after { transform: translateX(18px); }
+ol.steps { padding-left: 20px; margin: 6px 0 10px; font-size: 13.5px; }
+ol.steps li { margin-bottom: 5px; }
 </style>
 </head>
 <body>
@@ -109,6 +130,7 @@ label.radio input { margin-top: 4px; accent-color: var(--accent); }
 <main id="main"><div class="empty">Cargando…</div></main>
 <nav id="nav"></nav>
 <div class="toast" id="toast"></div>
+<div id="modal"></div>
 
 <script>
 'use strict'
@@ -228,23 +250,69 @@ async function viewBorradores() {
   } else {
     $('#main').innerHTML = head + list.map(d => {
       const phone = phoneOf(d.chat_id)
+      const alts = d.alternativas || []
+      ALTS[d.id] = alts
+      const models = new Set(alts.map(a => a.modelo))
       return `
       <div class="card" data-id="${d.id}" data-chat="${esc(d.chat_id)}">
         <div class="row" style="padding:0"><div class="grow"><div class="t">${esc(d.chat)} ${d.es_grupo ? '<span class="tag g">grupo</span>' : ''}</div></div><span class="time">${when(d.created_at)}</span></div>
         <div class="bubbles">${(d.contexto || []).map(m => `<div class="bubble ${m.from_me ? 'me' : ''}">${!m.from_me && d.es_grupo && m.de ? `<small>${esc(m.de)}</small>` : ''}${esc(m.text)}</div>`).join('')}</div>
+        ${alts.length > 1 ? `<div class="chips alts">${alts.map((a, i) => `<button class="chip ${i === 0 ? 'on' : ''}" data-alt="${i}">${models.size > 1 ? esc(shortModel(a.modelo)) : `Opción ${i + 1}`}</button>`).join('')}</div>` : ''}
         <textarea data-orig="${esc(d.text)}">${esc(d.text)}</textarea>
         <div class="actions">
           ${phone ? `<a class="btn primary" data-act="abrir" href="#" data-phone="${phone}">Abrir en WhatsApp</a>` : `<button class="btn primary" data-act="copiar-abrir">Copiar y abrir WhatsApp</button>`}
           <button class="btn" data-act="copiar">Copiar</button>
           <button class="btn" data-act="regenerar">Regenerar</button>
+          <button class="btn" data-act="perfil" data-chat="${esc(d.chat_id)}">Perfil</button>
           <button class="btn danger" data-act="descartar">Descartar</button>
         </div>
-        ${d.gen_ms ? `<p class="note" style="margin:8px 0 0">Redactado por la IA local en ${Math.round(d.gen_ms / 1000)} s</p>` : ''}
+        <p class="used">${d.gen_ms ? `IA local · ${Math.round(d.gen_ms / 1000)} s` : ''}${usedText(d.fuentes_usadas)}</p>
       </div>`
     }).join('')
   }
   $('#main').querySelectorAll('.seg button').forEach(b => b.onclick = () => { borradoresModo = b.dataset.modo; viewBorradores() })
 }
+
+const ALTS = {}
+const shortModel = m => (m || '').replace(/-it-qat$|-instruct$/, '').replace(':', ' ')
+function usedText(u) {
+  if (!u) return ''
+  const names = { perfil: 'perfil del chat', notas: 'tus notas', ejemplos: 'tus respuestas reales', calendario: 'calendario', gmail: 'Gmail', drive: 'Drive', chats: 'otros chats', chrome: 'historial de Chrome', web: 'internet' }
+  const parts = Object.entries(u).filter(([k]) => names[k]).map(([k, v]) => `${names[k]}${typeof v === 'number' && v > 1 ? ` (${v})` : ''}`)
+  let out = parts.length ? ` · Usó: ${parts.join(', ')}` : ''
+  if (u.busqueda) out += ` · Buscó en internet: «${esc(u.busqueda)}»`
+  if (u.errores?.length) out += ` · <span title="${esc(u.errores.join(' | '))}">⚠ ${u.errores.length} fuente(s) fallaron</span>`
+  return out
+}
+
+// ---------- Perfil de un chat ----------
+async function openPerfil(chatId) {
+  const p = await api(`/api/perfil?chat=${encodeURIComponent(chatId)}`)
+  const perfil = p.perfil && Object.values(p.perfil).some(Boolean)
+    ? `<dl class="prof">${Object.entries(p.etiquetas).map(([k, label]) => p.perfil[k] ? `<dt>${esc(label)}</dt><dd>${esc(p.perfil[k])}</dd>` : '').join('')}</dl>
+       <p class="note">Analizado ${p.updated_at ? when(p.updated_at) : ''} a partir de vuestros últimos mensajes.</p>`
+    : `<p class="note">${p.analizando ? 'Analizando ahora…' : 'Todavía sin analizar. Se hace solo en segundo plano (primero los chats más activos), o pulsa «Analizar ahora».'}</p>`
+  $('#modal').innerHTML = `<div class="modal" data-close="1"><div class="sheet">
+    <h3>${esc(p.nombre)}</h3>
+    <p class="note" style="margin-top:0">Cómo es vuestra relación y cómo escribes aquí, según la IA local.</p>
+    ${perfil}
+    <h2>Tus notas para este chat</h2>
+    <textarea id="notas" placeholder="Ej.: es mi jefa, trátala de usted y sin emojis. / Es mi hermano, lo llamo «tete».">${esc(p.notas)}</textarea>
+    <p class="note">La IA las cumple siempre, por encima de su análisis.</p>
+    <div class="actions">
+      <button class="btn primary" id="notas-save">Guardar notas</button>
+      <button class="btn" id="perfil-analizar">Analizar ahora</button>
+      <button class="btn" data-close="1">Cerrar</button>
+    </div></div></div>`
+  $('#notas-save').onclick = async () => {
+    try { await api('/api/perfil', { chatId, notas: $('#notas').value }); toast('Notas guardadas'); closeModal() } catch (err) { toast(err.message) }
+  }
+  $('#perfil-analizar').onclick = async () => {
+    try { await api('/api/perfil', { chatId, accion: 'analizar' }); toast('Pedido. Se analiza cuando la IA esté libre (1–3 min).'); closeModal() } catch (err) { toast(err.message) }
+  }
+}
+function closeModal() { $('#modal').innerHTML = '' }
+document.addEventListener('click', e => { if (e.target.dataset?.close) closeModal() })
 
 async function saveText(card) {
   const ta = card.querySelector('textarea')
@@ -257,6 +325,16 @@ async function copy(text) {
 }
 
 document.addEventListener('focusout', e => { const card = e.target.closest?.('.card[data-id]'); if (card && e.target.matches('textarea')) saveText(card).catch(() => {}) })
+
+document.addEventListener('click', e => {
+  const chip = e.target.closest('[data-alt]'); if (!chip) return
+  const card = chip.closest('.card[data-id]')
+  const alt = ALTS[card.dataset.id]?.[Number(chip.dataset.alt)]
+  if (!alt) return
+  card.querySelector('textarea').value = alt.texto
+  card.querySelectorAll('[data-alt]').forEach(c => c.classList.toggle('on', c === chip))
+  saveText(card).catch(() => {})
+})
 
 document.addEventListener('click', async e => {
   const el = e.target.closest('[data-act]'); if (!el) return
@@ -288,8 +366,10 @@ document.addEventListener('click', async e => {
       case 'generar': {
         e.preventDefault(); el.disabled = true; el.textContent = 'En cola…'
         const r = await api('/api/generar', { chatId: el.dataset.chat })
-        toast(r.iaLista ? 'Pedido. Aparecerá en Borradores en 1–2 minutos.' : 'Pedido, pero la IA aún no está lista: se hará en cuanto termine de descargarse.'); return
+        toast(r.iaLista ? 'Pedido. Aparecerá en Borradores en unos minutos.' : 'Pedido, pero la IA aún no está lista: se hará en cuanto termine de descargarse.'); return
       }
+      case 'perfil':
+        e.preventDefault(); await openPerfil(el.dataset.chat); return
     }
   } catch (err) { toast(err.message) }
 })
@@ -303,7 +383,8 @@ async function viewPendientes() {
         <div class="grow">
           <div class="t">${esc(p.nombre)} ${p.es_grupo ? '<span class="tag g">grupo</span>' : ''} ${p.sin_responder > 1 ? `<span class="tag w">${p.sin_responder}</span>` : ''}</div>
           <div class="s">${p.es_grupo && p.de ? `<b>${esc(p.de)}:</b> ` : ''}${esc(p.texto)}</div>
-          <div style="margin-top:6px">${p.tiene_borrador ? '<a class="btn small" href="#borradores">Ver borrador</a>' : `<button class="btn small" data-act="generar" data-chat="${esc(p.chat_id)}">Generar borrador</button>`}</div>
+          <div class="actions" style="margin-top:6px">${p.tiene_borrador ? '<a class="btn small" href="#borradores">Ver borrador</a>' : `<button class="btn small" data-act="generar" data-chat="${esc(p.chat_id)}">Generar borrador</button>`}
+            <button class="btn small" data-act="perfil" data-chat="${esc(p.chat_id)}">Perfil y notas</button></div>
         </div>
         <span class="time">${when(p.ultimo_mensaje)}</span>
       </div>`).join('')}</div>` : '<div class="card empty">Nada pendiente. 🎉</div>')
@@ -313,7 +394,7 @@ async function viewPendientes() {
 const tabla = { nombre: 'messages', q: '', offset: 0 }
 async function viewTablas() {
   const [list] = await Promise.all([api('/api/tablas'), loadEstado()])
-  const desc = { messages: 'Mensajes', chats: 'Chats', contacts: 'Contactos', drafts: 'Borradores', lid_map: 'IDs anónimos' }
+  const desc = { messages: 'Mensajes', chats: 'Chats', contacts: 'Contactos', drafts: 'Borradores', chat_profiles: 'Perfiles', lid_map: 'IDs anónimos' }
   $('#main').innerHTML = `
     <p class="note">Base de datos PostgreSQL del Huawei, en modo solo lectura.</p>
     <div class="chips">${list.map(t => `<button class="chip ${t.tabla === tabla.nombre ? 'on' : ''}" data-t="${t.tabla}">${desc[t.tabla] || t.tabla} · ${fmtN(t.filas)}</button>`).join('')}</div>
@@ -326,7 +407,8 @@ async function viewTablas() {
 function cell(v) {
   if (v === null || v === undefined) return '<span class="note">—</span>'
   if (typeof v === 'boolean') return v ? '✓' : '—'
-  if (Array.isArray(v)) v = v.join(', ')
+  if (Array.isArray(v) && v.every(x => typeof x !== 'object')) v = v.join(', ')
+  else if (typeof v === 'object') v = JSON.stringify(v)
   if (typeof v === 'string' && /^\d{4}-\d\d-\d\dT/.test(v)) return esc(new Date(v).toLocaleString('es-ES'))
   const s = String(v)
   return `<span title="${esc(s)}">${esc(s.length > 140 ? s.slice(0, 140) + '…' : s)}</span>`
@@ -346,9 +428,11 @@ async function loadTabla() {
 // ---------- Herramientas ----------
 async function viewAjustes() {
   await loadEstado()
-  const e = estado, ia = e.ia, tg = e.telegram, ts = e.tailscale, wa = e.whatsapp
+  const e = estado, ia = e.ia, tg = e.telegram, ts = e.tailscale, wa = e.whatsapp, gg = e.google, pf = e.perfiles
   const dot = c => `<span class="dot ${c}"></span>`
   const iaDot = ia.disponible && ia.instalado ? 'ok' : ia.descargando || ia.disponible ? 'warn' : 'bad'
+  const installed = id => (ia.instalados || []).includes(id.includes(':') ? id : `${id}:latest`)
+  const onHuawei = /^(localhost|127\.0\.0\.1)$/.test(location.hostname) || DEMO
   $('#main').innerHTML = `
     <div class="card tool"><h3>${dot(wa.estado === 'conectado' ? 'ok' : wa.estado === 'esperando QR' ? 'warn' : 'bad')}WhatsApp</h3>
       <dl class="kv"><dt>Estado</dt><dd>${esc(wa.estado)}${wa.usuario ? ` · ${esc(wa.usuario)}` : ''}</dd>
@@ -357,13 +441,31 @@ async function viewAjustes() {
       <dt>Modo</dt><dd><b>Solo lectura</b>: nunca envía, no marca como leído, no te pone «en línea»</dd></dl></div>
 
     <div class="card tool"><h3>${dot(iaDot)}IA local (Ollama)</h3>
-      <dl class="kv"><dt>Modelo</dt><dd>${esc(ia.modelo)} ${ia.instalado ? '<span class="tag g">instalado</span>' : ia.descargando ? `<span class="tag w">descargando ${ia.progreso ?? 0}%</span>` : '<span class="tag w">sin descargar</span>'}</dd>
-      ${ia.usando && ia.usando !== ia.modelo ? `<dt>Usando ahora</dt><dd>${esc(ia.usando)} (el anterior, mientras se descarga el nuevo)</dd>` : ''}
-      <dt>Ahora</dt><dd>${ia.generando ? 'Redactando un borrador…' : 'En espera'}${ia.cola ? ` · ${ia.cola} en cola` : ''}</dd>
-      ${ia.ultimoMs ? `<dt>Último borrador</dt><dd>${Math.round(ia.ultimoMs / 1000)} s</dd>` : ''}</dl>
+      <dl class="kv">
+      ${ia.usando && ia.usando !== ia.modelo ? `<dt>Usando ahora</dt><dd>${esc(ia.usando)} (mientras se descarga el elegido)</dd>` : ''}
+      <dt>Ahora</dt><dd>${ia.generando ? 'Redactando un borrador…' : pf.analizando ? 'Analizando el perfil de un chat…' : 'En espera'}${ia.cola ? ` · ${ia.cola} en cola` : ''}</dd>
+      ${ia.ultimoMs ? `<dt>Último borrador</dt><dd>${Math.round(ia.ultimoMs / 1000)} s</dd>` : ''}
+      <dt>Perfiles de chats</dt><dd>${pf.hechos} analizados${pf.cola ? ` · faltan ${pf.cola}` : ''}</dd></dl>
       ${ia.error ? `<div class="errbox" style="margin-top:10px">${esc(ia.error)}</div>` : ''}
       ${ia.ultimoError ? `<div class="errbox" style="margin-top:10px">Último fallo: ${esc(ia.ultimoError)}</div>` : ''}
-      <p class="note">Funciona dentro del Huawei, sin internet. Tus mensajes no salen del ordenador.</p></div>
+      <h2>Modelo</h2>
+      ${ia.catalogo.map(m => {
+        const inst = installed(m.id), inUse = m.id === ia.modelo, pct = ia.descargas?.[m.id]
+        return `<div class="model"><div class="grow"><b>${esc(m.nombre)}</b> <span class="note">${m.gb} GB</span>
+          ${inUse ? '<span class="tag g">elegido</span>' : ''} ${pct !== undefined ? `<span class="tag w">descargando ${pct}%</span>` : inst ? '<span class="tag">descargado</span>' : ''}
+          <div class="note">${esc(m.nota)}</div></div>
+          <div class="actions" style="margin:0;flex-direction:column">
+          ${!inUse ? `<button class="btn small" data-ia="modelo" data-m="${esc(m.id)}">${inst ? 'Usar' : pct !== undefined ? 'Usar al terminar' : 'Descargar y usar'}</button>` : ''}
+          ${!inUse && inst ? `<button class="btn small danger" data-ia="borrar" data-m="${esc(m.id)}">Borrar</button>` : ''}
+          ${!inUse && !inst && pct === undefined ? `<button class="btn small" data-ia="descargar" data-m="${esc(m.id)}">Solo descargar</button>` : ''}
+          </div></div>`
+      }).join('')}
+      <div class="actions"><button class="btn small" data-ia="comparar">Comparar los modelos descargados</button></div>
+      <p class="note">«Comparar» redacta el borrador de tu último chat pendiente con cada modelo descargado: verás una opción por modelo y eliges el que te guste. Solo cabe uno en memoria cada vez, así que tarda unos minutos.</p>
+      <h2>Opciones por borrador</h2>
+      <div class="seg">${[1, 2, 3].map(n => `<button data-opc="${n}" class="${ia.opciones === n ? 'on' : ''}">${n}</button>`).join('')}</div>
+      <p class="note">Con más opciones puedes elegir la mejor, pero cada una tarda lo suyo (unos 30–60 s).</p>
+      <p class="note">Todo funciona dentro del Huawei, sin internet.</p></div>
 
     <div class="card tool"><h3>${dot(ts.publicado ? 'ok' : ts.instalado ? 'warn' : 'bad')}Acceso desde el iPhone (Tailscale)</h3>
       ${ts.publicado ? `<p>Abre esta dirección en Safari del iPhone, con Tailscale activado:</p><p><a href="${esc(ts.url)}">${esc(ts.url)}</a></p><p class="note">Consejo: en Safari, Compartir → «Añadir a pantalla de inicio».</p>`
@@ -386,8 +488,39 @@ async function viewAjustes() {
         <div class="actions"><button class="btn small" data-tg="probar">Enviar prueba</button><button class="btn danger small" data-tg="desvincular">Desvincular</button></div>`}
       ${tg.error ? `<div class="errbox" style="margin-top:10px">${esc(tg.error)}</div>` : ''}</div>
 
-    <div class="card tool"><h3>${dot('')}Gmail · Calendar · Drive · Chrome</h3>
-      <p class="note">Fase 3, todavía sin conectar. Servirá para dar contexto a los borradores (tus citas, correos y documentos), solo leyendo de tu cuenta.</p></div>
+    <div class="card tool"><h3>${dot('ok')}Contexto para los borradores</h3>
+      <p class="note" style="margin-top:0">Antes de redactar, la IA puede mirar estas fuentes. Todo en solo lectura.</p>
+      ${[
+        ['chats', 'Otros chats de WhatsApp', 'Si el tema salió en otra conversación tuya. Solo en chats individuales, nunca en grupos.'],
+        ['google', 'Google: Calendar, Gmail, Drive', gg.conectado ? `Conectado como ${esc(gg.email || 'tu cuenta')}.` : 'Sin conectar (mira abajo).'],
+        ['chrome', 'Historial de Chrome', 'Páginas que has visitado estos días (solo los títulos).'],
+        ['web', 'Buscar en internet', 'Solo si el mensaje pide un dato público (horarios, direcciones, resultados…). Al buscador solo llega una consulta corta sin nombres ni datos tuyos, y verás cuál en cada borrador.'],
+      ].map(([k, t, d]) => `<label class="switch"><span class="grow"><b>${t}</b><br><span class="note">${d}</span></span><input type="checkbox" data-fuente="${k}" ${e.fuentes?.[k] !== false ? 'checked' : ''}></label>`).join('')}
+    </div>
+
+    <div class="card tool"><h3>${dot(gg.conectado ? 'ok' : gg.configurado ? 'warn' : '')}Google (solo lectura)</h3>
+      ${gg.conectado ? `
+        <p>Conectado como <b>${esc(gg.email || 'tu cuenta')}</b>. Lee Calendar, Gmail, los nombres de tus archivos de Drive y tus Contactos (para saber el email de cada persona). Nunca escribe ni envía nada.</p>
+        <div class="actions"><button class="btn small danger" data-g="desconectar">Desconectar</button></div>`
+      : gg.configurado ? `
+        <p>Credenciales guardadas. Falta dar permiso con tu Gmail personal.</p>
+        ${onHuawei ? `<div class="actions"><button class="btn primary" data-g="url">Conectar con Google</button></div>
+          <p class="note">Google avisará de que la app «no está verificada»: es tu propia app. Pulsa «Configuración avanzada» → «Ir a Asistente».</p>`
+          : '<div class="warnbox">Este paso hay que hacerlo desde el propio Huawei: abre <b>panel.cmd</b> allí.</div>'}
+        <div class="actions"><button class="btn small danger" data-g="desconectar">Borrar credenciales</button></div>`
+      : `
+        <p class="note" style="margin-top:0">Una sola vez, unos 10 minutos, gratis. Hazlo con tu <b>Gmail personal</b>, no con el de Cabify:</p>
+        <ol class="steps">
+          <li>Entra en <b>console.cloud.google.com</b> y crea un proyecto llamado «Asistente».</li>
+          <li>En <b>APIs y servicios → Biblioteca</b>, activa <b>Gmail API</b>, <b>Google Calendar API</b>, <b>Google Drive API</b> y <b>People API</b>.</li>
+          <li>En <b>Pantalla de consentimiento OAuth</b>: tipo <b>Externo</b>, nombre «Asistente» y tu email. Luego pulsa <b>Publicar app</b>: si no, el permiso caduca cada 7 días.</li>
+          <li>En <b>Credenciales → Crear credenciales → ID de cliente de OAuth</b>, elige <b>Aplicación de escritorio</b>.</li>
+          <li>Copia aquí el <b>ID de cliente</b> y el <b>secreto</b>, y pulsa Guardar.</li>
+        </ol>
+        <input type="text" id="g-id" placeholder="ID de cliente (…apps.googleusercontent.com)" autocomplete="off">
+        <input type="password" id="g-secret" placeholder="Secreto de cliente" autocomplete="off" style="margin-top:8px">
+        <div class="actions"><button class="btn primary" id="g-save">Guardar</button></div>`}
+      ${gg.error ? `<div class="errbox" style="margin-top:10px">${esc(gg.error)}</div>` : ''}</div>
 
     <div class="card tool"><h3>${dot(e.excluidos ? 'ok' : '')}Números excluidos</h3>
       <p><b>${e.excluidos}</b> número${e.excluidos === 1 ? '' : 's'} que el asistente no guarda ni usa nunca.</p>
@@ -401,6 +534,32 @@ async function viewAjustes() {
   })
   $('#main').querySelectorAll('input[name=tgmodo]').forEach(r => r.onchange = async () => {
     try { await api('/api/telegram', { accion: 'modo', modo: r.value }); toast('Guardado') } catch (err) { toast(err.message) }
+  })
+  $('#main').querySelectorAll('[data-ia]').forEach(b => b.onclick = async () => {
+    const accion = b.dataset.ia
+    if (accion === 'borrar' && !confirm(`¿Borrar el modelo ${b.dataset.m} del Huawei? Se puede volver a descargar.`)) return
+    b.disabled = true
+    try {
+      const r = await api('/api/ia', { accion, modelo: b.dataset.m })
+      toast({ modelo: 'Elegido. Si no estaba, se descarga ahora (mira el %).', descargar: 'Descargando…', borrar: 'Borrado', comparar: `Comparando ${r.modelos} modelos: el resultado saldrá en Borradores en unos minutos.` }[accion])
+      viewAjustes()
+    } catch (err) { toast(err.message); b.disabled = false }
+  })
+  $('#main').querySelectorAll('[data-opc]').forEach(b => b.onclick = async () => {
+    try { await api('/api/ia', { accion: 'opciones', n: Number(b.dataset.opc) }); toast('Guardado'); viewAjustes() } catch (err) { toast(err.message) }
+  })
+  $('#main').querySelectorAll('[data-fuente]').forEach(c => c.onchange = async () => {
+    try { await api('/api/fuentes', { clave: c.dataset.fuente, valor: c.checked }); toast(c.checked ? 'Activado' : 'Desactivado') } catch (err) { toast(err.message); c.checked = !c.checked }
+  })
+  $('#g-save')?.addEventListener('click', async () => {
+    try { await api('/api/google', { accion: 'credenciales', clientId: $('#g-id').value, clientSecret: $('#g-secret').value }); toast('Guardado'); viewAjustes() } catch (err) { toast(err.message) }
+  })
+  $('#main').querySelectorAll('[data-g]').forEach(b => b.onclick = async () => {
+    try {
+      if (b.dataset.g === 'url') { const r = await api('/api/google', { accion: 'url' }); location.href = r.url; return }
+      if (!confirm('¿Seguro?')) return
+      await api('/api/google', { accion: 'desconectar' }); toast('Hecho'); viewAjustes()
+    } catch (err) { toast(err.message) }
   })
 }
 
@@ -421,17 +580,32 @@ function demoApi(path) {
   const ago = m => new Date(Date.now() - m * 60000).toISOString()
   const D = {
     '/api/estado': { whatsapp: { estado: 'conectado', usuario: 'Mat', conectadoDesde: ago(90), historicoRecibido: 18342 }, memoria: { mensajes: 18342, chats: 214, desde: ago(60 * 24 * 180) }, pendientes: 6, borradores: 2,
-      ia: { disponible: true, instalado: true, descargando: false, progreso: null, modelo: 'qwen3:4b-instruct', usando: 'qwen3:4b-instruct', error: null, cola: 0, generando: null, ultimoError: null, ultimoMs: 48000 },
-      telegram: { estado: 'vinculado', bot: 'mi_asistente_bot', modo: 'aviso', error: null }, tailscale: { instalado: true, conectado: true, publicado: true, url: 'https://huawei.tail1234.ts.net/' }, excluidos: 1, google: { estado: 'fase 3' } },
+      ia: { disponible: true, instalado: true, descargando: true, progreso: null, modelo: 'qwen3.5:4b', usando: 'qwen3.5:4b', error: null, cola: 0, generando: null, ultimoError: null, ultimoMs: 148000,
+        opciones: 3, instalados: ['qwen3.5:4b', 'qwen3:4b-instruct'], descargas: { 'gemma3:4b': 37 },
+        catalogo: [
+          { id: 'qwen3:4b-instruct', nombre: 'Qwen3 4B Instruct', gb: 2.5, nota: 'El de ahora. El más rápido.' },
+          { id: 'qwen3.5:4b', nombre: 'Qwen 3.5 4B', gb: 3.4, nota: 'Más nuevo (2026). Mejor español y comprensión. Recomendado.' },
+          { id: 'gemma3:4b', nombre: 'Gemma 3 4B', gb: 3.3, nota: 'De Google. Redacción natural.' },
+          { id: 'gemma4:e2b-it-qat', nombre: 'Gemma 4 E2B', gb: 4.3, nota: 'El más nuevo de Google (2026). Justo de RAM: cierra Chrome si va lento.' }] },
+      perfiles: { analizando: null, hechos: 23, cola: 17, ultimoError: null },
+      telegram: { estado: 'vinculado', bot: 'mi_asistente_bot', modo: 'aviso', error: null }, tailscale: { instalado: true, conectado: true, publicado: true, url: 'https://huawei.tail1234.ts.net/' }, excluidos: 1,
+      google: { configurado: true, conectado: true, email: 'tellenemathieu@gmail.com', error: null },
+      fuentes: { chats: true, google: true, chrome: true, web: true } },
+    '/api/perfil': { chatId: '34600000001@s.whatsapp.net', nombre: 'Laura', notas: '', updated_at: ago(60 * 26), analizando: false,
+      etiquetas: { relacion: 'Relación', tono: 'Tono', como_escribes: 'Cómo escribes aquí', temas: 'Temas habituales', datos: 'Datos útiles', evitar: 'Evitar' },
+      perfil: { relacion: 'Amiga cercana desde la universidad; mucha confianza.', tono: 'Informal, con bromas y cariño.', como_escribes: 'Mensajes cortos, en minúscula, «jaja» y 😊. La llamas «lau».', temas: 'Cenas, viajes, su trabajo en el hospital.', datos: 'Cena en su casa el sábado; es vegetariana.', evitar: 'Mensajes largos o formales.' } },
     '/api/mensajes': [
       { chat_id: '34600000001@s.whatsapp.net', chat: 'Laura', es_grupo: false, de: 'Laura', text: '¿Al final vienes el sábado a la cena? Dime algo antes del jueves 😊', ts: ago(12) },
       { chat_id: '1203@g.us', chat: 'Pádel domingos', es_grupo: true, de: 'Javi', text: '@Mat te apuntas a las 10?', ts: ago(35) },
       { chat_id: '34600000002@s.whatsapp.net', chat: 'Mamá', es_grupo: false, de: 'Mamá', text: '[foto] Mira qué bonito ha quedado el jardín', ts: ago(180) },
     ],
     '/api/borradores': [
-      { id: 1, chat_id: '34600000001@s.whatsapp.net', chat: 'Laura', es_grupo: false, created_at: ago(10), gen_ms: 48000, text: 'sii cuenta conmigo! llevo el vino 🍷',
+      { id: 1, chat_id: '34600000001@s.whatsapp.net', chat: 'Laura', es_grupo: false, created_at: ago(10), gen_ms: 148000, text: 'sii cuenta conmigo! llevo el vino 🍷',
+        alternativas: [{ texto: 'sii cuenta conmigo! llevo el vino 🍷', modelo: 'qwen3.5:4b' }, { texto: 'claro lau! allí estaré, ¿a qué hora? 😊', modelo: 'qwen3.5:4b' }, { texto: 'síii, me apunto! te digo algo mañana', modelo: 'qwen3.5:4b' }],
+        fuentes_usadas: { ejemplos: 8, perfil: 1, calendario: 4, chats: 1 },
         contexto: [{ from_me: true, text: 'qué tal todo?' }, { from_me: false, text: 'Genial! Oye' }, { from_me: false, text: '¿Al final vienes el sábado a la cena? Dime algo antes del jueves 😊' }] },
       { id: 2, chat_id: '1203@g.us', chat: 'Pádel domingos', es_grupo: true, created_at: ago(30), gen_ms: 39000, text: 'me apunto! a las 10 perfecto',
+        fuentes_usadas: { ejemplos: 5, calendario: 2, busqueda: 'tiempo Madrid domingo' },
         contexto: [{ from_me: false, de: 'Javi', text: '¿Quién juega el domingo?' }, { from_me: false, de: 'Javi', text: '@Mat te apuntas a las 10?' }] },
     ],
     '/api/pendientes': [

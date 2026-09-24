@@ -55,6 +55,17 @@ CREATE TABLE IF NOT EXISTS drafts (
 );
 CREATE INDEX IF NOT EXISTS drafts_chat_idx   ON drafts (chat_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS drafts_status_idx ON drafts (status, created_at DESC);
+ALTER TABLE drafts ADD COLUMN IF NOT EXISTS alternativas jsonb;  -- [{texto, modelo, ms}] opciones para elegir
+ALTER TABLE drafts ADD COLUMN IF NOT EXISTS contexto     jsonb;  -- que fuentes se usaron (calendario, gmail...)
+
+-- Perfil de cada chat: analisis de la IA sobre el historico + tus propias notas (que mandan)
+CREATE TABLE IF NOT EXISTS chat_profiles (
+  chat_id    text PRIMARY KEY,
+  perfil     jsonb,                     -- {relacion, tono, como_escribes, temas, datos, evitar}
+  notas      text,                      -- tus instrucciones: "es mi jefa, trátala de usted"
+  msgs_count int NOT NULL DEFAULT 0,    -- mensajes que habia al analizarlo (para saber cuando repetir)
+  updated_at timestamptz                -- cuando se analizo por ultima vez
+);
 
 -- Chats cuyo último mensaje NO es tuyo (sin archivar ni silenciar).
 CREATE OR REPLACE VIEW pendientes AS

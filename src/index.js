@@ -4,6 +4,7 @@ import { excludedJids, excludedNumbers } from './exclusions.js'
 import { keepAwake } from './keepawake.js'
 import { startOllama } from './ollama.js'
 import { startPanel } from './panel/server.js'
+import { startProfiles } from './profiles.js'
 import { startTelegram } from './telegram.js'
 import { startWhatsApp } from './whatsapp.js'
 
@@ -29,6 +30,7 @@ console.log(`Numeros excluidos: ${excludedNumbers.size}${borrados ? ` (borrados 
 keepAwake()
 startPanel()
 startOllama()
+startProfiles()
 startTelegram()
 await startWhatsApp()
 

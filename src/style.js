@@ -1,5 +1,7 @@
 // Construye el prompt de un borrador: tu estilo con esa persona + ejemplos reales + conversacion reciente.
+import { gatherContext } from './context.js'
 import { pool } from './db.js'
+import { formatProfile, getProfile } from './profiles.js'
 
 const EMOJI = /\p{Extended_Pictographic}/gu
 const clip = (s, n = 250) => (s && s.length > n ? s.slice(0, n) + '...' : s || '')
@@ -61,20 +63,31 @@ async function examples(chatId, beforeTs, incomingText) {
   const target = words(incomingText)
   const scored = rows.map((r, i) => ({ ...r, i, score: [...words(r.ellos)].filter(w => target.has(w)).length }))
   const similar = scored.filter(r => r.score > 0).sort((a, b) => b.score - a.score).slice(0, 3)
-  const recent = scored.filter(r => !similar.includes(r)).slice(0, 6 - similar.length)
+  const recent = scored.filter(r => !similar.includes(r)).slice(0, 8 - similar.length)
   return [...similar, ...recent].sort((a, b) => b.i - a.i)
 }
 
-export async function buildPrompt(chatId, meName = 'yo') {
+/**
+ * @param {{ context?: boolean }} opts context=false para no consultar Google/Chrome/otros chats
+ */
+export async function buildPrompt(chatId, meName = 'yo', { context = true } = {}) {
   const info = await chatInfo(chatId)
   const { rows: recentDesc } = await pool.query(
     `SELECT m.from_me, m.ts, m.text, COALESCE(ct.name, m.sender_name, ct.notify, 'Alguien') AS quien
      FROM messages m LEFT JOIN contacts ct ON ct.jid = m.sender_jid
-     WHERE m.chat_id = $1 ORDER BY m.ts DESC LIMIT 20`, [chatId])
+     WHERE m.chat_id = $1 ORDER BY m.ts DESC LIMIT 25`, [chatId])
   const recent = recentDesc.reverse()
-  const lastIncoming = [...recent].reverse().find(m => !m.from_me)
+  // Lo que te han escrito desde tu ultimo mensaje (a lo que hay que contestar)
+  const pending = []
+  for (const m of [...recent].reverse()) {
+    if (m.from_me) break
+    pending.unshift(m.text)
+  }
+  const incoming = pending.slice(-4).join('\n')
   const style = await myStyle(chatId)
-  const ex = recent.length ? await examples(chatId, recent[0].ts, lastIncoming?.text) : []
+  const ex = recent.length ? await examples(chatId, recent[0].ts, incoming) : []
+  const profile = await getProfile(chatId)
+  const ctx = context ? await gatherContext({ chatId, esGrupo: info.es_grupo, incoming }) : { lines: [], usado: {} }
 
   const where = info.es_grupo ? `el grupo de WhatsApp "${info.nombre}"` : `tu chat de WhatsApp con ${info.nombre}`
   const rules = [
@@ -82,6 +95,8 @@ export async function buildPrompt(chatId, meName = 'yo') {
     'Devuelve SOLO este JSON: {"respuesta": "<tu mensaje>"}. Dentro va unicamente el texto que enviarias:',
     'sin explicar lo que vas a hacer, sin razonar, sin comillas extra, sin "Yo:" delante y sin firmar.',
   ]
+  if (profile?.notas) rules.push(`INSTRUCCIONES TUYAS PARA ESTE CHAT (cumplelas siempre): ${profile.notas}`)
+  if (profile?.perfil) rules.push(`Lo que sabes de este chat (analisis de vuestro historial):\n${formatProfile(profile.perfil)}`)
   if (style) {
     rules.push(`Imita tu forma real de escribir ${style.scope}:`)
     rules.push(`- Largo habitual: unos ${style.median} caracteres. No te alargues mas de lo que sueles.`)
@@ -101,11 +116,19 @@ export async function buildPrompt(chatId, meName = 'yo') {
     for (const e of ex) parts.push(`Ellos: ${clip(e.ellos, 160)}\nTu: ${clip(e.yo, 160)}`)
     parts.push('---')
   }
+  if (ctx.lines.length) {
+    parts.push('Contexto privado tuyo (usalo solo si ayuda a contestar; no lo copies tal cual ni digas de donde sale):')
+    parts.push(...ctx.lines, '---')
+  }
   parts.push('Conversacion reciente:')
   for (const m of recent) parts.push(`[${hhmm(m.ts)}] ${m.from_me ? 'Tu' : m.quien}: ${clip(m.text)}`)
   parts.push('---', 'Escribe ahora tu respuesta.')
 
-  return { system: rules.join('\n'), user: parts.join('\n'), nombre: info.nombre, esGrupo: info.es_grupo }
+  const usado = { ...ctx.usado }
+  if (ex.length) usado.ejemplos = ex.length
+  if (profile?.perfil) usado.perfil = 1
+  if (profile?.notas) usado.notas = 1
+  return { system: rules.join('\n'), user: parts.join('\n'), nombre: info.nombre, esGrupo: info.es_grupo, usado }
 }
 
 /** Saca el mensaje de la salida del modelo: JSON {"respuesta"}, sin razonamiento previo. */

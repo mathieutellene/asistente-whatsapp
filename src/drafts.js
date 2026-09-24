@@ -2,21 +2,29 @@
 import { pool } from './db.js'
 import { bus } from './events.js'
 import { chat as askModel, iaReady } from './ollama.js'
+import { setBusyCheck } from './profiles.js'
+import { settings } from './settings.js'
 import { buildPrompt, cleanDraft } from './style.js'
 import { notifyDraft } from './telegram.js'
 import { getMe, waStatus } from './whatsapp.js'
 
 const DEBOUNCE_MS = 45_000 // espera a que la persona termine de escribir (varios mensajes seguidos)
+const TEMPERATURES = [0.6, 0.85, 1.0] // opcion 1 mas "segura", las siguientes mas variadas
 const timers = new Map()
-const queue = []
+const queue = [] // [{ chatId, models? }]
 let running = false
 let backlogDone = false
 
 export const draftStatus = { cola: 0, generando: null, ultimoError: null, ultimoMs: null }
+setBusyCheck(() => running || queue.length > 0) // los perfiles esperan a que no haya borradores
 
-/** Pone un chat en la cola de borradores (tambien lo usa el boton "Generar borrador" del panel). */
-export function requestDraft(chatId) {
-  if (!queue.includes(chatId)) queue.push(chatId)
+/**
+ * Pone un chat en la cola de borradores (tambien lo usan los botones del panel).
+ * models: para comparar, una opcion con cada modelo indicado.
+ */
+export function requestDraft(chatId, { models } = {}) {
+  if (models?.length) queue.push({ chatId, models })
+  else if (!queue.some(q => q.chatId === chatId && !q.models)) queue.push({ chatId })
   draftStatus.cola = queue.length
   pump()
 }
@@ -30,11 +38,11 @@ async function pump() {
         setTimeout(pump, 60_000) // la IA aun no esta lista (descargando el modelo, Ollama cerrado...)
         return
       }
-      const chatId = queue.shift()
+      const job = queue.shift()
       draftStatus.cola = queue.length
-      draftStatus.generando = chatId
+      draftStatus.generando = job.chatId
       try {
-        await generate(chatId)
+        await generate(job.chatId, job)
         draftStatus.ultimoError = null
       } catch (err) {
         draftStatus.ultimoError = err.message
@@ -53,26 +61,38 @@ async function lastMessage(chatId) {
   return m
 }
 
-async function generate(chatId) {
+/** Genera el borrador (con varias opciones) y lo guarda. Exportado para las pruebas. */
+export async function generate(chatId, { models } = {}) {
   const last = await lastMessage(chatId)
-  if (!last || last.from_me) return // ya has contestado
+  if (!last || last.from_me) return null // ya has contestado
   const me = waStatus.usuario || 'yo'
   const prompt = await buildPrompt(chatId, me)
-  const { text, ms, model } = await askModel([
-    { role: 'system', content: prompt.system },
-    { role: 'user', content: prompt.user },
-  ])
-  const draft = cleanDraft(text, me)
-  if (!draft) throw new Error('la IA devolvio un texto vacio')
+  const messages = [{ role: 'system', content: prompt.system }, { role: 'user', content: prompt.user }]
+  const n = models?.length || Math.max(1, Math.min(3, Number(settings().ia?.opciones) || 1))
+  const alternativas = []
+  let total = 0
+  for (let i = 0; i < n; i++) {
+    const r = await askModel(messages, models
+      ? { model: models[i], keepAlive: '0' } // comparando: libera la RAM entre modelos
+      : { temperature: TEMPERATURES[i] })
+    total += r.ms
+    const texto = cleanDraft(r.text, me)
+    if (texto && !alternativas.some(a => a.texto === texto)) alternativas.push({ texto, modelo: r.model, ms: r.ms })
+    const now = await lastMessage(chatId)
+    if (!now || now.from_me) return null // contestaste mientras la IA pensaba
+  }
+  if (!alternativas.length) throw new Error('la IA devolvio un texto vacio')
   const again = await lastMessage(chatId)
-  if (!again || again.from_me) return // contestaste mientras la IA pensaba
   await pool.query(`UPDATE drafts SET status = 'reemplazado', updated_at = now() WHERE chat_id = $1 AND status = 'pendiente'`, [chatId])
   const { rows: [d] } = await pool.query(
-    'INSERT INTO drafts (chat_id, trigger_msg_id, text, model, gen_ms) VALUES ($1, $2, $3, $4, $5) RETURNING id',
-    [chatId, again.msg_id, draft, model, ms])
-  draftStatus.ultimoMs = ms
-  console.log(`Borrador listo para ${prompt.nombre} (${Math.round(ms / 1000)} s).`)
-  notifyDraft({ id: d.id, chatId, nombre: prompt.nombre, text: draft }).catch(() => {})
+    `INSERT INTO drafts (chat_id, trigger_msg_id, text, model, gen_ms, alternativas, contexto)
+     VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id`,
+    [chatId, again.msg_id, alternativas[0].texto, alternativas[0].modelo, total,
+      JSON.stringify(alternativas), JSON.stringify(prompt.usado)])
+  draftStatus.ultimoMs = total
+  console.log(`Borrador listo para ${prompt.nombre}: ${alternativas.length} opcion(es) en ${Math.round(total / 1000)} s.`)
+  notifyDraft({ id: d.id, chatId, nombre: prompt.nombre, text: alternativas[0].texto }).catch(() => {})
+  return d.id
 }
 
 const TRIVIAL = /^[\p{Extended_Pictographic}\p{Emoji_Modifier}‍️\s.!]*$/u
@@ -99,8 +119,7 @@ async function shouldDraft(msg) {
 async function markAnswered(chatId, myText) {
   clearTimeout(timers.get(chatId))
   timers.delete(chatId)
-  const i = queue.indexOf(chatId)
-  if (i >= 0) queue.splice(i, 1)
+  for (let i = queue.length - 1; i >= 0; i--) if (queue[i].chatId === chatId) queue.splice(i, 1)
   draftStatus.cola = queue.length
   await pool.query(
     `UPDATE drafts SET status = CASE WHEN status = 'usado' THEN 'usado' ELSE 'respondido' END,

@@ -65,6 +65,7 @@ export async function purgeJids(jids) {
     deleted += (await c.query('DELETE FROM contacts WHERE jid = ANY($1)', [all])).rowCount
     deleted += (await c.query('DELETE FROM lid_map WHERE pn = ANY($1) OR lid = ANY($1)', [all])).rowCount
     deleted += (await c.query('DELETE FROM drafts WHERE chat_id = ANY($1)', [all])).rowCount
+    deleted += (await c.query('DELETE FROM chat_profiles WHERE chat_id = ANY($1)', [all])).rowCount
     await c.query('COMMIT')
   } catch (err) {
     await c.query('ROLLBACK')
@@ -72,7 +73,7 @@ export async function purgeJids(jids) {
   } finally {
     c.release()
   }
-  if (deleted) await pool.query('VACUUM FULL messages, chats, contacts, lid_map, drafts')
+  if (deleted) await pool.query('VACUUM FULL messages, chats, contacts, lid_map, drafts, chat_profiles')
   return deleted
 }
 

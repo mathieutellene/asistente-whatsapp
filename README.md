@@ -13,6 +13,34 @@ Lee tu WhatsApp **en modo solo lectura**, lo guarda en PostgreSQL y prepara **bo
   - Las tablas de PostgreSQL, en modo solo lectura.
 - **Avisos por Telegram (opcional):** por defecto solo dicen "Tienes N borradores", sin nombres ni contenido.
 
+## Cómo aprende tu tono con cada chat
+- **Estadísticas de tus mensajes:** en ese chat calcula el largo habitual, los emojis, si tratas de usted, si te ríes por escrito…
+- **Tus respuestas reales:** hasta 8 del mismo chat, eligiendo las más parecidas al mensaje que te acaban de mandar.
+- **Perfil del chat:** la IA lee vuestro historial en segundo plano y resume la relación, el tono, cómo escribes ahí, los temas, datos útiles y qué evitar. Lo hace con tus 40 chats más activos y lo repite cada 14 días o cada 150 mensajes nuevos.
+- **Tus notas por chat** (botón "Perfil y notas"), por ejemplo "es mi jefa, trátala de usted". La IA las cumple siempre.
+- **Varias opciones:** cada borrador trae hasta 3 alternativas para elegir.
+
+## Contexto para los borradores (solo lectura; se activa y desactiva en Herramientas)
+| Fuente | Qué mira |
+|---|---|
+| Otros chats de WhatsApp | Si el tema salió en otra conversación tuya. Solo en chats individuales. |
+| Google Calendar | Tus próximos 7 días y los eventos relacionados. |
+| Gmail | Correos con esa persona (su email sale de tus Contactos) o sobre el tema. |
+| Google Drive | Solo los nombres de los archivos. |
+| Historial de Chrome | Títulos de las páginas de los últimos 3 días. |
+| Internet | Solo si el mensaje pide un dato público. Al buscador (DuckDuckGo) solo llega una consulta corta que redacta la IA, sin nombres, teléfonos ni correos. En cada borrador ves qué se buscó. |
+
+Google se conecta una vez desde **Herramientas → Google**, con tu propio proyecto gratuito de Google Cloud (los pasos están en el panel) y tu Gmail personal. Solo pide permisos de lectura.
+
+## Modelo de IA
+En **Herramientas → Modelo** puedes elegir entre modelos que caben en 8 GB, descargarlos, borrarlos y **compararlos** con tus propios chats:
+- `qwen3:4b-instruct`: el más rápido.
+- `qwen3.5:4b`: recomendado.
+- `gemma3:4b`.
+- `gemma4:e2b-it-qat`: el más pesado.
+
+Modelos grandes como Kimi K2 necesitan cientos de GB de memoria y no pueden funcionar en local.
+
 ## Instalar o actualizar (en el Huawei)
 Abre PowerShell (tecla Windows → escribe PowerShell → Enter), pega esta línea y pulsa Enter. Cuando Windows pregunte, pulsa **Sí**:
 ```
@@ -63,6 +91,6 @@ No se descargan fotos, vídeos, audios ni documentos: solo se apunta una etiquet
 - **La llave de WhatsApp:** `%LOCALAPPDATA%\asistente-whatsapp\auth-whatsapp` da acceso a tu cuenta. Si pierdes el portátil: WhatsApp → Dispositivos vinculados → cierra la sesión del equipo.
 - **Más de 14 días apagado:** WhatsApp desvincula el ordenador y el asistente muestra un QR nuevo.
 
-## Próximas fases
-3. Contexto de Google Calendar, Gmail y Drive, e historial de Chrome.
-4. Aprendizaje a partir de tus correcciones y transcripción de notas de voz.
+## Próximas ideas
+- Aprender de tus correcciones: comparar el borrador con lo que acabas enviando (ya se guarda en `drafts.my_reply`).
+- Transcribir notas de voz en local.
