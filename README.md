@@ -87,6 +87,13 @@ No se descargan fotos, vídeos, audios ni documentos: solo se apunta una etiquet
 - **Nunca envía nada:** el código de WhatsApp no llama a ninguna función de envío ni de "marcar como leído". Una prueba automática en GitHub lo comprueba en cada cambio.
 - **Panel:** solo escucha en `127.0.0.1` y rechaza peticiones de otras webs. Las tablas se ven en modo solo lectura.
 - **IA:** Ollama funciona dentro del Huawei, sin internet.
+- **La IA no puede tocar tus cuentas.** Solo recibe texto y devuelve texto: no tiene acceso a ninguna herramienta ni a Google. Las consultas a Google las hace el programa, siempre las mismas y de solo lectura.
+- **Google es de solo lectura, con tres candados:**
+  1. Solo se piden permisos de lectura. Si Google concediera cualquier otro, la conexión se rechaza y el permiso se revoca, y se vuelve a comprobar antes de cada uso.
+  2. Con tus datos solo se hacen lecturas (GET) y solo a los servidores de Gmail, Calendar, Drive y Contactos.
+  3. Las pruebas automáticas fallan si el código pidiera un permiso de escritura o hiciera una petición que no sea de lectura.
+
+  Puedes revisar o quitar el acceso cuando quieras en myaccount.google.com/permissions.
 - **Telegram:** en modo "aviso" no manda nombres ni contenido. El modo "completo" es opcional y avisa de que el texto queda en los servidores de Telegram.
 - **La llave de WhatsApp:** `%LOCALAPPDATA%\asistente-whatsapp\auth-whatsapp` da acceso a tu cuenta. Si pierdes el portátil: WhatsApp → Dispositivos vinculados → cierra la sesión del equipo.
 - **Más de 14 días apagado:** WhatsApp desvincula el ordenador y el asistente muestra un QR nuevo.

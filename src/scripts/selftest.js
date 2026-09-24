@@ -6,7 +6,9 @@ import { createServer, request } from 'node:http'
 import { insertMessages, pool, purgeJids, upsertChat, upsertContact } from '../db.js'
 import { excludedJids, isExcluded } from '../exclusions.js'
 import { extractContent } from '../extract.js'
+import { readFileSync } from 'node:fs'
 import { decideSearch, gatherContext, keywords } from '../context.js'
+import { checkScopes } from '../google.js'
 import { generate } from '../drafts.js'
 import { chat, checkOllama, ensureModel, iaReady, iaStatus } from '../ollama.js'
 import { startPanel } from '../panel/server.js'
@@ -175,7 +177,32 @@ await pool.query('DELETE FROM drafts')
 fake.close()
 ok('perfil del chat, tus notas y borrador con 3 opciones')
 
-// 9. Panel
+// 9. Google: SOLO LECTURA garantizado (candados 1, 2 y 3)
+const readOnlyGrant = 'openid https://www.googleapis.com/auth/userinfo.email https://www.googleapis.com/auth/gmail.readonly https://www.googleapis.com/auth/calendar.readonly https://www.googleapis.com/auth/drive.metadata.readonly https://www.googleapis.com/auth/contacts.readonly'
+assert.equal(checkScopes(readOnlyGrant).length, 6)
+assert.equal(checkScopes('openid https://www.googleapis.com/auth/calendar.readonly').length, 2, 'si concedes menos, vale')
+for (const write of [
+  'https://mail.google.com/', 'https://www.googleapis.com/auth/gmail.modify', 'https://www.googleapis.com/auth/gmail.send',
+  'https://www.googleapis.com/auth/gmail.compose', 'https://www.googleapis.com/auth/gmail.insert', 'https://www.googleapis.com/auth/gmail.labels',
+  'https://www.googleapis.com/auth/calendar', 'https://www.googleapis.com/auth/calendar.events',
+  'https://www.googleapis.com/auth/drive', 'https://www.googleapis.com/auth/drive.file', 'https://www.googleapis.com/auth/drive.readonly',
+  'https://www.googleapis.com/auth/contacts',
+]) {
+  assert.throws(() => checkScopes(`${readOnlyGrant} ${write}`), /no son de solo lectura/, `debe rechazar ${write}`)
+}
+assert.throws(() => checkScopes(''), /no son de solo lectura/)
+// El codigo de Google solo puede hacer POST al servidor de permisos (obtener/revocar), nunca a los datos
+const gsrc = readFileSync(new URL('../google.js', import.meta.url), 'utf8').split('\n')
+gsrc.forEach((l, i) => {
+  assert.doesNotMatch(l, /method:\s*'(PUT|PATCH|DELETE)'/, `google.js:${i + 1} no puede modificar nada`)
+  if (/method:\s*'POST'/.test(l)) assert.match(gsrc[i - 1] + l, /oauth2\.googleapis\.com/, `google.js:${i + 1}: POST solo al servidor de permisos`)
+})
+// Los permisos que se piden son exactamente los de lectura
+const wanted = gsrc.join('\n').match(/const SCOPES = \[([\s\S]*?)\]/)[1].match(/'[^']+'/g).map(s => s.slice(1, -1))
+assert.deepEqual(wanted, ['openid', 'email', 'https://www.googleapis.com/auth/gmail.readonly', 'https://www.googleapis.com/auth/calendar.readonly', 'https://www.googleapis.com/auth/drive.metadata.readonly', 'https://www.googleapis.com/auth/contacts.readonly'])
+ok('Google: solo permisos de lectura, rechaza cualquier permiso de escritura y nunca modifica datos')
+
+// 10. Panel
 const server = startPanel(Number(process.env.PANEL_PORT) || 8799)
 await new Promise(r => server.once('listening', r))
 const base = `http://127.0.0.1:${server.address().port}`

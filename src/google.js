@@ -14,6 +14,21 @@ const SCOPES = [
 ]
 export const redirectUri = () => `http://127.0.0.1:${config.panelPort}/oauth/google`
 
+// CANDADO 1 - Unicos permisos aceptados. Google devuelve la lista de permisos concedidos: si hubiera
+// cualquier otro (enviar, modificar, borrar...), la conexion se rechaza y el permiso se revoca.
+const ALLOWED_SCOPES = new Set([...SCOPES, 'https://www.googleapis.com/auth/userinfo.email'])
+export function checkScopes(scope) {
+  const granted = String(scope || '').split(/\s+/).filter(Boolean)
+  const extra = granted.filter(s => !ALLOWED_SCOPES.has(s))
+  if (!granted.length || extra.length) {
+    throw new Error(`Google concedio permisos que no son de solo lectura (${extra.join(', ') || 'lista vacia'}). Conexion rechazada.`)
+  }
+  return granted
+}
+
+// CANDADO 2 - Con los datos solo se hacen lecturas (GET) y solo a estos servidores de Google
+const READ_HOSTS = new Set(['gmail.googleapis.com', 'www.googleapis.com', 'people.googleapis.com', 'openidconnect.googleapis.com'])
+
 const g = () => settings().google
 const saveG = patch => saveSettings({ google: { ...g(), ...patch } })
 const status = { error: null }
@@ -75,6 +90,12 @@ export async function handleCallback(query) {
   const tok = await tokenRequest({
     code: query.get('code'), redirect_uri: redirectUri(), grant_type: 'authorization_code', code_verifier: s.pending.verifier,
   })
+  try {
+    checkScopes(tok.scope)
+  } catch (err) {
+    await revoke(tok.refresh_token || tok.access_token)
+    throw err
+  }
   if (!tok.refresh_token) throw new Error('Google no devolvio permiso permanente. Quita el acceso en myaccount.google.com/permissions y vuelve a conectar.')
   const tokens = { ...tok, expires_at: Date.now() + tok.expires_in * 1000 }
   let email = null
@@ -87,14 +108,25 @@ export async function handleCallback(query) {
 async function accessToken() {
   const s = g()
   if (!s.tokens?.refresh_token) throw new Error('Google no conectado')
+  checkScopes(s.tokens.scope) // se vuelve a comprobar antes de cada uso
   if (s.tokens.access_token && s.tokens.expires_at > Date.now() + 60_000) return s.tokens.access_token
   const t = await tokenRequest({ refresh_token: s.tokens.refresh_token, grant_type: 'refresh_token' })
-  saveG({ tokens: { ...s.tokens, access_token: t.access_token, expires_at: Date.now() + t.expires_in * 1000 } })
+  if (t.scope) {
+    try {
+      checkScopes(t.scope)
+    } catch (err) {
+      await disconnectGoogle()
+      throw err
+    }
+  }
+  saveG({ tokens: { ...s.tokens, access_token: t.access_token, expires_at: Date.now() + t.expires_in * 1000, scope: t.scope || s.tokens.scope } })
   return t.access_token
 }
 
 async function gget(url, token) {
-  const res = await fetch(url, { headers: { authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(10_000) })
+  const u = new URL(url)
+  if (u.protocol !== 'https:' || !READ_HOSTS.has(u.hostname)) throw new Error(`servidor no permitido: ${u.hostname}`)
+  const res = await fetch(u, { method: 'GET', headers: { authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(10_000) })
   const j = await res.json().catch(() => ({}))
   if (!res.ok) throw new Error(j.error?.message || j.error_description || `HTTP ${res.status}`)
   return j
@@ -111,10 +143,16 @@ async function api(url) {
   }
 }
 
+/** Anula un permiso en Google (lo mismo que quitarlo en myaccount.google.com/permissions). */
+async function revoke(token) {
+  if (!token) return
+  await fetch(`https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(token)}`, { method: 'POST' }).catch(() => {})
+}
+
 export async function disconnectGoogle() {
   const token = g().tokens?.refresh_token
   saveG({ tokens: null, email: null, pending: null })
-  if (token) await fetch(`https://oauth2.googleapis.com/revoke?token=${encodeURIComponent(token)}`, { method: 'POST' }).catch(() => {})
+  await revoke(token)
 }
 
 // ---------- Lecturas ----------
